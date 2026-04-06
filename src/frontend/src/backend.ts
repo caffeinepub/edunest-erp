@@ -666,6 +666,34 @@ export class Backend implements backendInterface {
             return from_candid_User_n5(this._uploadFile, this._downloadFile, result);
         }
     }
+    async uploadUserPhoto(arg0: string, arg1: string, arg2: string): Promise<User> {
+        if (this.processError) {
+            try {
+                const result = await (this.actor as any).uploadUserPhoto(arg0, arg1, arg2);
+                return from_candid_User_n5(this._uploadFile, this._downloadFile, result);
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await (this.actor as any).uploadUserPhoto(arg0, arg1, arg2);
+            return from_candid_User_n5(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async uploadCollegeLogo(arg0: string, arg1: string, arg2: string): Promise<College> {
+        if (this.processError) {
+            try {
+                const result = await (this.actor as any).uploadCollegeLogo(arg0, arg1, arg2);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await (this.actor as any).uploadCollegeLogo(arg0, arg1, arg2);
+            return result;
+        }
+    }
 }
 function from_candid_Session_n15(_uploadFile: (file: ExternalBlob) => Promise<Uint8Array>, _downloadFile: (file: Uint8Array) => Promise<ExternalBlob>, value: _Session): Session {
     return from_candid_record_n16(_uploadFile, _downloadFile, value);
