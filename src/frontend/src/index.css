@@ -1,0 +1,106 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@font-face {
+  font-family: "Plus Jakarta Sans";
+  src: url("/assets/fonts/PlusJakartaSans.woff2") format("woff2");
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "General Sans";
+  src: url("/assets/fonts/GeneralSans.woff2") format("woff2");
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@layer base {
+  :root {
+    --radius: 0.75rem;
+    /* Light mode - Corporate ERP theme */
+    --background: 0.97 0.003 247;
+    --foreground: 0.16 0.01 283;
+    --card: 1 0 0;
+    --card-foreground: 0.16 0.01 283;
+    --popover: 1 0 0;
+    --popover-foreground: 0.16 0.01 283;
+    --primary: 0.58 0.18 254;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.96 0.03 254;
+    --secondary-foreground: 0.58 0.18 254;
+    --muted: 0.94 0.005 247;
+    --muted-foreground: 0.54 0.02 265;
+    --accent: 0.96 0.03 254;
+    --accent-foreground: 0.42 0.15 254;
+    --destructive: 0.57 0.22 25;
+    --destructive-foreground: 1 0 0;
+    --border: 0.9 0.005 247;
+    --input: 0.9 0.005 247;
+    --ring: 0.58 0.18 254;
+    --success: 0.58 0.17 151;
+    --success-foreground: 1 0 0;
+    --warning: 0.75 0.16 70;
+    --warning-foreground: 0.2 0 0;
+    --chart-1: 0.58 0.18 254;
+    --chart-2: 0.58 0.17 151;
+    --chart-3: 0.57 0.22 25;
+    --chart-4: 0.75 0.16 70;
+    --chart-5: 0.64 0.14 305;
+    /* Navy sidebar */
+    --sidebar: 0.18 0.08 255;
+    --sidebar-foreground: 0.96 0.005 247;
+    --sidebar-primary: 0.58 0.18 254;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.26 0.07 255;
+    --sidebar-accent-foreground: 1 0 0;
+    --sidebar-border: 0.28 0.07 255;
+    --sidebar-ring: 0.58 0.18 254;
+  }
+
+  .dark {
+    --background: 0.13 0.01 260;
+    --foreground: 0.95 0.005 247;
+    --card: 0.17 0.02 260;
+    --card-foreground: 0.95 0.005 247;
+    --popover: 0.17 0.02 260;
+    --popover-foreground: 0.95 0.005 247;
+    --primary: 0.65 0.18 254;
+    --primary-foreground: 1 0 0;
+    --secondary: 0.22 0.04 255;
+    --secondary-foreground: 0.85 0.01 247;
+    --muted: 0.2 0.03 260;
+    --muted-foreground: 0.62 0.02 265;
+    --accent: 0.22 0.04 255;
+    --accent-foreground: 0.85 0.01 247;
+    --destructive: 0.62 0.22 25;
+    --destructive-foreground: 1 0 0;
+    --border: 1 0 0 / 10%;
+    --input: 1 0 0 / 12%;
+    --ring: 0.65 0.18 254;
+    --success: 0.62 0.17 151;
+    --chart-1: 0.65 0.18 254;
+    --chart-2: 0.62 0.17 151;
+    --chart-3: 0.62 0.22 25;
+    --chart-4: 0.78 0.16 70;
+    --chart-5: 0.68 0.14 305;
+    --sidebar: 0.12 0.05 255;
+    --sidebar-foreground: 0.95 0.005 247;
+    --sidebar-primary: 0.65 0.18 254;
+    --sidebar-primary-foreground: 1 0 0;
+    --sidebar-accent: 0.18 0.06 255;
+    --sidebar-accent-foreground: 1 0 0;
+    --sidebar-border: 0.22 0.06 255;
+    --sidebar-ring: 0.65 0.18 254;
+  }
+
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+}
