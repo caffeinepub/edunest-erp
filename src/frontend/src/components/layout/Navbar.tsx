@@ -38,6 +38,13 @@ export function Navbar({ isDark, onToggleDark, pageTitle }: NavbarProps) {
 
   if (!user) return null;
 
+  const initials = user.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
   return (
     <header className="sticky top-0 z-30 bg-card/95 dark:bg-card/95 backdrop-blur-sm border-b border-border px-6 py-3 flex items-center gap-4">
       {/* Page title */}
@@ -113,16 +120,17 @@ export function Navbar({ isDark, onToggleDark, pageTitle }: NavbarProps) {
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-muted transition-colors"
             data-ocid="navbar.profile.button"
           >
-            <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-              <span className="text-white text-xs font-bold">
-                {user.name
-                  .split(" ")
-                  .map((w) => w[0])
-                  .join("")
-                  .slice(0, 2)
-                  .toUpperCase()}
-              </span>
-            </div>
+            {user.photoUrl ? (
+              <img
+                src={user.photoUrl}
+                alt={user.name}
+                className="w-7 h-7 rounded-full object-cover flex-shrink-0 border border-border"
+              />
+            ) : (
+              <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                <span className="text-white text-xs font-bold">{initials}</span>
+              </div>
+            )}
             <div className="hidden sm:block text-left">
               <p className="text-xs font-semibold text-foreground leading-tight">
                 {user.name.split(" ").slice(0, 2).join(" ")}
@@ -142,16 +150,33 @@ export function Navbar({ isDark, onToggleDark, pageTitle }: NavbarProps) {
                 data-ocid="navbar.profile.dropdown_menu"
               >
                 <div className="px-4 py-3 border-b border-border">
-                  <p className="font-semibold text-sm text-foreground">
-                    {user.name}
-                  </p>
-                  <span
-                    className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-1 ${
-                      roleBadgeColors[user.role] ?? ""
-                    }`}
-                  >
-                    {roleLabels[user.role] ?? user.role}
-                  </span>
+                  <div className="flex items-center gap-3 mb-2">
+                    {user.photoUrl ? (
+                      <img
+                        src={user.photoUrl}
+                        alt={user.name}
+                        className="w-10 h-10 rounded-full object-cover border border-border flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-sm font-bold">
+                          {initials}
+                        </span>
+                      </div>
+                    )}
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-foreground truncate">
+                        {user.name}
+                      </p>
+                      <span
+                        className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mt-0.5 ${
+                          roleBadgeColors[user.role] ?? ""
+                        }`}
+                      >
+                        {roleLabels[user.role] ?? user.role}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 {user.collegeId && user.collegeId !== "" && (
                   <div className="px-4 py-2 text-xs text-muted-foreground border-b border-border">

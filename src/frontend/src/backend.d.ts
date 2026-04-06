@@ -35,6 +35,7 @@ export interface User {
     collegeId: string;
     passwordHash: string;
     phone: string;
+    photoUrl: string;
 }
 export interface College {
     id: string;
@@ -43,6 +44,23 @@ export interface College {
     name: string;
     createdAt: bigint;
     address: string;
+    logoUrl: string;
+}
+export interface Department {
+    id: string;
+    collegeId: string;
+    name: string;
+    code: string;
+    createdAt: bigint;
+}
+export interface Course {
+    id: string;
+    collegeId: string;
+    departmentId: string;
+    name: string;
+    code: string;
+    duration: string;
+    createdAt: bigint;
 }
 export interface Notice {
     id: string;
@@ -108,9 +126,14 @@ export interface backendInterface {
     addTeacherRecord(token: string, collegeId: string, teacherId: string, department: string, designation: string, qualification: string, joiningDate: string): Promise<TeacherRecord>;
     assignCallerUserRole(user: Principal, role: UserRole__1): Promise<void>;
     createCollege(token: string, name: string, code: string, address: string): Promise<College>;
+    createDepartment(token: string, collegeId: string, name: string, code: string): Promise<Department>;
+    createCourse(token: string, collegeId: string, departmentId: string, name: string, code: string, duration: string): Promise<Course>;
     createNotice(token: string, collegeId: string, title: string, content: string, targetRole: string): Promise<Notice>;
     createUser(token: string, username: string, email: string, password: string, role: UserRole, collegeId: string, name: string, phone: string): Promise<User>;
+    deleteCourse(token: string, courseId: string): Promise<void>;
+    deleteDepartment(token: string, deptId: string): Promise<void>;
     deleteUser(token: string, userId: string): Promise<void>;
+    deleteCollege(token: string, collegeId: string): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole__1>;
     getCollege(token: string, collegeId: string): Promise<College>;
@@ -120,6 +143,8 @@ export interface backendInterface {
     getUserProfile(user: Principal): Promise<UserProfile | null>;
     isCallerAdmin(): Promise<boolean>;
     listColleges(token: string): Promise<Array<College>>;
+    listCourses(token: string, collegeId: string): Promise<Array<Course>>;
+    listDepartments(token: string, collegeId: string): Promise<Array<Department>>;
     listFeeRecords(token: string, collegeId: string): Promise<Array<FeeRecord>>;
     listNotices(token: string, collegeId: string): Promise<Array<Notice>>;
     listStudentRecords(token: string, collegeId: string): Promise<Array<StudentRecord>>;
@@ -131,11 +156,16 @@ export interface backendInterface {
         name: string;
         role: UserRole;
         collegeId: string;
+        photoUrl: string;
     }>;
     logout(token: string): Promise<void>;
     resetPassword(token: string, userId: string, newPassword: string): Promise<void>;
     saveCallerUserProfile(profile: UserProfile): Promise<void>;
     updateCollege(token: string, collegeId: string, name: string, address: string, status: string): Promise<College>;
+    updateCourse(token: string, courseId: string, name: string, code: string, duration: string): Promise<Course>;
+    updateDepartment(token: string, deptId: string, name: string, code: string): Promise<Department>;
     updateFeeRecord(token: string, feeRecordId: string, paidAmount: bigint, status: string): Promise<FeeRecord>;
     updateUser(token: string, userId: string, name: string, email: string, phone: string, isActive: boolean): Promise<User>;
+    uploadCollegeLogo(token: string, collegeId: string, logoDataUrl: string): Promise<College>;
+    uploadUserPhoto(token: string, userId: string, photoDataUrl: string): Promise<User>;
 }

@@ -28,15 +28,20 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Bell,
+  BookOpen,
+  Camera,
   GraduationCap,
+  ImageIcon,
   Loader2,
+  Pencil,
   Plus,
   RefreshCw,
   Shield,
+  Trash2,
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { College, Notice, User } from "../../backend";
 import { UserRole } from "../../backend";
@@ -44,7 +49,27 @@ import { backendAPI as backend } from "../../backendAPI";
 import { useAuth } from "../../contexts/AuthContext";
 import { AdminStudents } from "./AdminStudents";
 
+// Extended user type with optional photoUrl (backend runtime supports it)
+type UserWithPhoto = User & { photoUrl?: string };
+
 const CARD = "bg-card rounded-2xl border border-border shadow-card p-5";
+// Local types for Department and Course (new backend features)
+interface Department {
+  id: string;
+  collegeId: string;
+  name: string;
+  code: string;
+  createdAt: bigint;
+}
+interface Course {
+  id: string;
+  collegeId: string;
+  departmentId: string;
+  name: string;
+  code: string;
+  duration: string;
+  createdAt: bigint;
+}
 
 function StatCard({
   icon: Icon,
@@ -78,6 +103,155 @@ function StatCard({
   );
 }
 
+// ── Upload User Photo Dialog ──────────────────────────────────────────────────
+function UploadUserPhotoDialog({
+  user: targetUser,
+  token,
+  onUpdated,
+}: { user: UserWithPhoto; token: string; onUpdated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const dataUrl = evt.target?.result as string;
+      setPhotoDataUrl(dataUrl);
+      setPreviewUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!photoDataUrl) {
+      toast.error("Please select an image first.");
+      return;
+    }
+    setLoading(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: uploadUserPhoto added in backend runtime
+      await (backend as any).uploadUserPhoto(
+        token,
+        targetUser.id,
+        photoDataUrl,
+      );
+      toast.success(`Photo uploaded for "${targetUser.name}"!`);
+      setOpen(false);
+      setPreviewUrl("");
+      setPhotoDataUrl("");
+      onUpdated();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to upload photo",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
+      setPreviewUrl("");
+      setPhotoDataUrl("");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          data-ocid="admin.users.photo.open_modal_button"
+        >
+          <ImageIcon className="w-3.5 h-3.5 mr-1" /> Photo
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-ocid="admin.users.photo.dialog">
+        <DialogHeader>
+          <DialogTitle>Upload Profile Photo</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            Upload a profile photo for <strong>{targetUser.name}</strong>
+          </p>
+
+          {/* Current photo preview */}
+          {targetUser.photoUrl && !previewUrl && (
+            <div className="space-y-1.5">
+              <Label>Current Photo</Label>
+              <div className="flex items-center gap-3">
+                <img
+                  src={targetUser.photoUrl}
+                  alt={targetUser.name}
+                  className="w-14 h-14 rounded-full object-cover border border-border"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Photo already set. Upload a new one to replace it.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* New image preview */}
+          {previewUrl && (
+            <div className="space-y-1.5">
+              <Label>Preview</Label>
+              <div className="flex items-center gap-3">
+                <img
+                  src={previewUrl}
+                  alt="Preview"
+                  className="w-16 h-16 rounded-full object-cover border border-border"
+                />
+                <span className="text-xs text-muted-foreground">
+                  This will be saved as the profile photo.
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="user-photo-file">Select Photo *</Label>
+            <Input
+              id="user-photo-file"
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              data-ocid="admin.users.photo.upload_button"
+              className="cursor-pointer file:cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+            />
+            <p className="text-xs text-muted-foreground">
+              Supports JPG, PNG, GIF, WebP. Recommended: 200×200px or square.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            data-ocid="admin.users.photo.cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={loading || !photoDataUrl}
+            data-ocid="admin.users.photo.submit_button"
+          >
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {loading ? "Uploading..." : "Save Photo"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Add User Dialog ───────────────────────────────────────────────────────────
 function AddUserDialog({
   role,
@@ -98,7 +272,9 @@ function AddUserDialog({
     password: "",
     phone: "",
   });
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
 
   const roleLabel =
     role === UserRole.teacher
@@ -111,6 +287,25 @@ function AddUserDialog({
             ? "Principal"
             : "User";
 
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const resetState = () => {
+    setForm({ name: "", username: "", email: "", password: "", phone: "" });
+    setPhotoDataUrl("");
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) resetState();
+  };
+
   const handleSubmit = async () => {
     if (!form.name || !form.username || !form.password) {
       toast.error("Name, username and password are required.");
@@ -118,7 +313,7 @@ function AddUserDialog({
     }
     setLoading(true);
     try {
-      await backend.createUser(
+      const newUser = await backend.createUser(
         token,
         form.username,
         form.email,
@@ -128,8 +323,21 @@ function AddUserDialog({
         form.name,
         form.phone,
       );
+      // Upload photo inline if provided
+      if (photoDataUrl) {
+        try {
+          // biome-ignore lint/suspicious/noExplicitAny: uploadUserPhoto added in backend runtime
+          await (backend as any).uploadUserPhoto(
+            token,
+            newUser.id,
+            photoDataUrl,
+          );
+        } catch {
+          toast.error(`${roleLabel} created but photo upload failed.`);
+        }
+      }
       toast.success(`${roleLabel} "${form.name}" created!`);
-      setForm({ name: "", username: "", email: "", password: "", phone: "" });
+      resetState();
       setOpen(false);
       onCreated();
     } catch (err: unknown) {
@@ -140,7 +348,7 @@ function AddUserDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm" data-ocid={`admin.${role}.open_modal_button`}>
           <Plus className="w-4 h-4 mr-1" /> Add {roleLabel}
@@ -212,11 +420,50 @@ function AddUserDialog({
               />
             </div>
           </div>
+          {/* Inline Photo Upload */}
+          <div className="space-y-2">
+            <Label>Photo (Optional)</Label>
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="w-20 h-20 rounded-full border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-primary transition-colors overflow-hidden bg-muted"
+              data-ocid={`admin.${role}.photo.dropzone`}
+            >
+              {photoDataUrl ? (
+                <img
+                  src={photoDataUrl}
+                  alt="Preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Camera className="w-6 h-6 text-muted-foreground" />
+              )}
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelect}
+            />
+            {photoDataUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoDataUrl("");
+                  if (photoInputRef.current) photoInputRef.current.value = "";
+                }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => setOpen(false)}
+            onClick={() => handleOpenChange(false)}
             data-ocid={`admin.${role}.cancel_button`}
           >
             Cancel
@@ -314,14 +561,14 @@ function RoleUsersTab({
   collegeId,
   token,
 }: { role: UserRole; collegeId: string; token: string }) {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserWithPhoto[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     try {
       const data = await backend.listUsers(token, collegeId, role);
-      setUsers(data);
+      setUsers(data as UserWithPhoto[]);
     } catch {
       toast.error("Failed to load users");
     } finally {
@@ -344,7 +591,7 @@ function RoleUsersTab({
             ? "Principal"
             : "User";
 
-  const toggleActive = async (u: User) => {
+  const toggleActive = async (u: UserWithPhoto) => {
     try {
       await backend.updateUser(
         token,
@@ -354,7 +601,7 @@ function RoleUsersTab({
         u.phone,
         !u.isActive,
       );
-      setUsers((prev) =>
+      setUsers((prev: UserWithPhoto[]) =>
         prev.map((x) => (x.id === u.id ? { ...x, isActive: !x.isActive } : x)),
       );
       toast.success(`User ${!u.isActive ? "activated" : "deactivated"}`);
@@ -413,6 +660,7 @@ function RoleUsersTab({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">Photo</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Username</TableHead>
                   <TableHead>Email</TableHead>
@@ -424,6 +672,24 @@ function RoleUsersTab({
               <TableBody>
                 {users.map((u, i) => (
                   <TableRow key={u.id} data-ocid={`admin.${role}.row.${i + 1}`}>
+                    <TableCell>
+                      {u.photoUrl ? (
+                        <img
+                          src={u.photoUrl}
+                          alt={u.name}
+                          className="w-9 h-9 rounded-full object-cover border border-border"
+                        />
+                      ) : (
+                        <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                          {u.name
+                            .split(" ")
+                            .map((w) => w[0])
+                            .join("")
+                            .slice(0, 2)
+                            .toUpperCase()}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">{u.name}</TableCell>
                     <TableCell className="font-mono text-xs">
                       {u.username}
@@ -446,7 +712,12 @@ function RoleUsersTab({
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      <div className="flex gap-2">
+                      <div className="flex gap-1.5 flex-wrap">
+                        <UploadUserPhotoDialog
+                          user={u}
+                          token={token}
+                          onUpdated={fetchUsers}
+                        />
                         <ResetPasswordDialog user={u} token={token} />
                         <Button
                           variant="outline"
@@ -622,6 +893,817 @@ function NoticesSection({
   );
 }
 
+// ── Departments & Courses Section ────────────────────────────────────────────
+function DepartmentsSection({
+  collegeId,
+  token,
+}: { collegeId: string; token: string }) {
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingDepts, setLoadingDepts] = useState(false);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+
+  // Department form state
+  const [addDeptOpen, setAddDeptOpen] = useState(false);
+  const [deptForm, setDeptForm] = useState({ name: "", code: "" });
+  const [savingDept, setSavingDept] = useState(false);
+
+  // Edit department state
+  const [editDeptOpen, setEditDeptOpen] = useState(false);
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
+  const [editDeptForm, setEditDeptForm] = useState({ name: "", code: "" });
+  const [updatingDept, setUpdatingDept] = useState(false);
+
+  // Course form state
+  const [addCourseOpen, setAddCourseOpen] = useState(false);
+  const [courseForm, setCourseForm] = useState({
+    name: "",
+    code: "",
+    departmentId: "",
+    duration: "",
+  });
+  const [savingCourse, setSavingCourse] = useState(false);
+
+  // Edit course state
+  const [editCourseOpen, setEditCourseOpen] = useState(false);
+  const [editingCourse, setEditingCourse] = useState<Course | null>(null);
+  const [editCourseForm, setEditCourseForm] = useState({
+    name: "",
+    code: "",
+    duration: "",
+  });
+  const [updatingCourse, setUpdatingCourse] = useState(false);
+
+  const fetchDepartments = useCallback(async () => {
+    setLoadingDepts(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: listDepartments added in backend runtime
+      const data = (await (backend as any).listDepartments(
+        token,
+        collegeId,
+      )) as Department[];
+      setDepartments(data);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load departments",
+      );
+    } finally {
+      setLoadingDepts(false);
+    }
+  }, [token, collegeId]);
+
+  const fetchCourses = useCallback(async () => {
+    setLoadingCourses(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: listCourses added in backend runtime
+      const data = (await (backend as any).listCourses(
+        token,
+        collegeId,
+      )) as Course[];
+      setCourses(data);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to load courses",
+      );
+    } finally {
+      setLoadingCourses(false);
+    }
+  }, [token, collegeId]);
+
+  useEffect(() => {
+    Promise.all([fetchDepartments(), fetchCourses()]);
+  }, [fetchDepartments, fetchCourses]);
+
+  // ── Department CRUD ──────────────────────────────
+  const handleAddDept = async () => {
+    if (!deptForm.name.trim() || !deptForm.code.trim()) {
+      toast.error("Department name and code are required.");
+      return;
+    }
+    setSavingDept(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: createDepartment added in backend runtime
+      await (backend as any).createDepartment(
+        token,
+        collegeId,
+        deptForm.name.trim(),
+        deptForm.code.trim(),
+      );
+      toast.success(`Department "${deptForm.name}" created!`);
+      setDeptForm({ name: "", code: "" });
+      setAddDeptOpen(false);
+      fetchDepartments();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create department",
+      );
+    } finally {
+      setSavingDept(false);
+    }
+  };
+
+  const openEditDept = (dept: Department) => {
+    setEditingDept(dept);
+    setEditDeptForm({ name: dept.name, code: dept.code });
+    setEditDeptOpen(true);
+  };
+
+  const handleUpdateDept = async () => {
+    if (!editingDept) return;
+    if (!editDeptForm.name.trim() || !editDeptForm.code.trim()) {
+      toast.error("Department name and code are required.");
+      return;
+    }
+    setUpdatingDept(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: updateDepartment added in backend runtime
+      await (backend as any).updateDepartment(
+        token,
+        editingDept.id,
+        editDeptForm.name.trim(),
+        editDeptForm.code.trim(),
+      );
+      toast.success("Department updated!");
+      setEditDeptOpen(false);
+      setEditingDept(null);
+      fetchDepartments();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update department",
+      );
+    } finally {
+      setUpdatingDept(false);
+    }
+  };
+
+  const handleDeleteDept = async (dept: Department) => {
+    if (
+      !window.confirm(
+        `Delete department "${dept.name}"? This cannot be undone.`,
+      )
+    )
+      return;
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: deleteDepartment added in backend runtime
+      await (backend as any).deleteDepartment(token, dept.id);
+      toast.success(`Department "${dept.name}" deleted.`);
+      fetchDepartments();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete department",
+      );
+    }
+  };
+
+  // ── Course CRUD ──────────────────────────────────
+  const handleAddCourse = async () => {
+    if (
+      !courseForm.name.trim() ||
+      !courseForm.code.trim() ||
+      !courseForm.departmentId ||
+      !courseForm.duration.trim()
+    ) {
+      toast.error("All course fields are required.");
+      return;
+    }
+    setSavingCourse(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: createCourse added in backend runtime
+      await (backend as any).createCourse(
+        token,
+        collegeId,
+        courseForm.departmentId,
+        courseForm.name.trim(),
+        courseForm.code.trim(),
+        courseForm.duration.trim(),
+      );
+      toast.success(`Course "${courseForm.name}" created!`);
+      setCourseForm({ name: "", code: "", departmentId: "", duration: "" });
+      setAddCourseOpen(false);
+      fetchCourses();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to create course",
+      );
+    } finally {
+      setSavingCourse(false);
+    }
+  };
+
+  const openEditCourse = (course: Course) => {
+    setEditingCourse(course);
+    setEditCourseForm({
+      name: course.name,
+      code: course.code,
+      duration: course.duration,
+    });
+    setEditCourseOpen(true);
+  };
+
+  const handleUpdateCourse = async () => {
+    if (!editingCourse) return;
+    if (
+      !editCourseForm.name.trim() ||
+      !editCourseForm.code.trim() ||
+      !editCourseForm.duration.trim()
+    ) {
+      toast.error("Course name, code, and duration are required.");
+      return;
+    }
+    setUpdatingCourse(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: updateCourse added in backend runtime
+      await (backend as any).updateCourse(
+        token,
+        editingCourse.id,
+        editCourseForm.name.trim(),
+        editCourseForm.code.trim(),
+        editCourseForm.duration.trim(),
+      );
+      toast.success("Course updated!");
+      setEditCourseOpen(false);
+      setEditingCourse(null);
+      fetchCourses();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to update course",
+      );
+    } finally {
+      setUpdatingCourse(false);
+    }
+  };
+
+  const handleDeleteCourse = async (course: Course) => {
+    if (
+      !window.confirm(`Delete course "${course.name}"? This cannot be undone.`)
+    )
+      return;
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: deleteCourse added in backend runtime
+      await (backend as any).deleteCourse(token, course.id);
+      toast.success(`Course "${course.name}" deleted.`);
+      fetchCourses();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete course",
+      );
+    }
+  };
+
+  const getDeptName = (deptId: string) => {
+    const dept = departments.find((d) => d.id === deptId);
+    return dept ? `${dept.name}` : "—";
+  };
+
+  return (
+    <div className="space-y-5">
+      <Tabs defaultValue="departments" data-ocid="admin.departments.tab">
+        <TabsList>
+          <TabsTrigger
+            value="departments"
+            data-ocid="admin.departments.departments.tab"
+          >
+            Departments
+          </TabsTrigger>
+          <TabsTrigger
+            value="courses"
+            data-ocid="admin.departments.courses.tab"
+          >
+            Courses
+          </TabsTrigger>
+        </TabsList>
+
+        {/* ── Departments Tab ── */}
+        <TabsContent value="departments" className="mt-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-foreground">
+              Departments
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({departments.length})
+              </span>
+            </h3>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchDepartments}
+                data-ocid="admin.departments.refresh.button"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${loadingDepts ? "animate-spin" : ""}`}
+                />
+              </Button>
+
+              {/* Add Department Dialog */}
+              <Dialog open={addDeptOpen} onOpenChange={setAddDeptOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    data-ocid="admin.departments.add.open_modal_button"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add Department
+                  </Button>
+                </DialogTrigger>
+                <DialogContent data-ocid="admin.departments.add.dialog">
+                  <DialogHeader>
+                    <DialogTitle>Add Department</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="dept-name">Department Name *</Label>
+                      <Input
+                        id="dept-name"
+                        placeholder="e.g. Computer Science"
+                        value={deptForm.name}
+                        onChange={(e) =>
+                          setDeptForm((p) => ({ ...p, name: e.target.value }))
+                        }
+                        data-ocid="admin.departments.add.name.input"
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="dept-code">Code *</Label>
+                      <Input
+                        id="dept-code"
+                        placeholder="e.g. CS"
+                        value={deptForm.code}
+                        onChange={(e) =>
+                          setDeptForm((p) => ({ ...p, code: e.target.value }))
+                        }
+                        data-ocid="admin.departments.add.code.input"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setAddDeptOpen(false)}
+                      data-ocid="admin.departments.add.cancel_button"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleAddDept}
+                      disabled={savingDept}
+                      data-ocid="admin.departments.add.submit_button"
+                    >
+                      {savingDept && (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      )}
+                      Create Department
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+
+          <div className={CARD}>
+            {loadingDepts ? (
+              <div
+                className="flex items-center justify-center py-10"
+                data-ocid="admin.departments.loading_state"
+              >
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : departments.length === 0 ? (
+              <div
+                className="text-center py-12"
+                data-ocid="admin.departments.empty_state"
+              >
+                <BookOpen className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-medium text-foreground">
+                  No departments yet
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add your first department to get started.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {departments.map((dept, i) => (
+                      <TableRow
+                        key={dept.id}
+                        data-ocid={`admin.departments.row.${i + 1}`}
+                      >
+                        <TableCell className="font-medium">
+                          {dept.name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="border-0 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 text-xs font-mono">
+                            {dept.code}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-1.5 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditDept(dept)}
+                              data-ocid={`admin.departments.edit_button.${i + 1}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteDept(dept)}
+                              data-ocid={`admin.departments.delete_button.${i + 1}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          {/* Edit Department Dialog */}
+          <Dialog
+            open={editDeptOpen}
+            onOpenChange={(open) => {
+              setEditDeptOpen(open);
+              if (!open) setEditingDept(null);
+            }}
+          >
+            <DialogContent data-ocid="admin.departments.edit.dialog">
+              <DialogHeader>
+                <DialogTitle>Edit Department</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-dept-name">Department Name *</Label>
+                  <Input
+                    id="edit-dept-name"
+                    placeholder="e.g. Computer Science"
+                    value={editDeptForm.name}
+                    onChange={(e) =>
+                      setEditDeptForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    data-ocid="admin.departments.edit.name.input"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-dept-code">Code *</Label>
+                  <Input
+                    id="edit-dept-code"
+                    placeholder="e.g. CS"
+                    value={editDeptForm.code}
+                    onChange={(e) =>
+                      setEditDeptForm((p) => ({ ...p, code: e.target.value }))
+                    }
+                    data-ocid="admin.departments.edit.code.input"
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditDeptOpen(false)}
+                  data-ocid="admin.departments.edit.cancel_button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateDept}
+                  disabled={updatingDept}
+                  data-ocid="admin.departments.edit.save_button"
+                >
+                  {updatingDept && (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  )}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+
+        {/* ── Courses Tab ── */}
+        <TabsContent value="courses" className="mt-5 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-foreground">
+              Courses
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                ({courses.length})
+              </span>
+            </h3>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={fetchCourses}
+                data-ocid="admin.courses.refresh.button"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${loadingCourses ? "animate-spin" : ""}`}
+                />
+              </Button>
+
+              {/* Add Course Dialog */}
+              <Dialog open={addCourseOpen} onOpenChange={setAddCourseOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    size="sm"
+                    data-ocid="admin.courses.add.open_modal_button"
+                  >
+                    <Plus className="w-4 h-4 mr-1" /> Add Course
+                  </Button>
+                </DialogTrigger>
+                <DialogContent data-ocid="admin.courses.add.dialog">
+                  <DialogHeader>
+                    <DialogTitle>Add Course</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="course-name">Course Name *</Label>
+                      <Input
+                        id="course-name"
+                        placeholder="e.g. Bachelor of Computer Applications"
+                        value={courseForm.name}
+                        onChange={(e) =>
+                          setCourseForm((p) => ({ ...p, name: e.target.value }))
+                        }
+                        data-ocid="admin.courses.add.name.input"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="course-code">Code *</Label>
+                        <Input
+                          id="course-code"
+                          placeholder="e.g. BCA"
+                          value={courseForm.code}
+                          onChange={(e) =>
+                            setCourseForm((p) => ({
+                              ...p,
+                              code: e.target.value,
+                            }))
+                          }
+                          data-ocid="admin.courses.add.code.input"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="course-duration">Duration *</Label>
+                        <Input
+                          id="course-duration"
+                          placeholder="e.g. 3 Years"
+                          value={courseForm.duration}
+                          onChange={(e) =>
+                            setCourseForm((p) => ({
+                              ...p,
+                              duration: e.target.value,
+                            }))
+                          }
+                          data-ocid="admin.courses.add.duration.input"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="course-dept">Department *</Label>
+                      <Select
+                        value={courseForm.departmentId}
+                        onValueChange={(val) =>
+                          setCourseForm((p) => ({ ...p, departmentId: val }))
+                        }
+                      >
+                        <SelectTrigger
+                          id="course-dept"
+                          data-ocid="admin.courses.add.department.select"
+                        >
+                          <SelectValue placeholder="Select department" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {departments.length === 0 ? (
+                            <SelectItem value="__none__" disabled>
+                              No departments — add one first
+                            </SelectItem>
+                          ) : (
+                            departments.map((dept) => (
+                              <SelectItem key={dept.id} value={dept.id}>
+                                {dept.name} ({dept.code})
+                              </SelectItem>
+                            ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                      {departments.length === 0 && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400">
+                          Please add a department first before creating courses.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      onClick={() => setAddCourseOpen(false)}
+                      data-ocid="admin.courses.add.cancel_button"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      onClick={handleAddCourse}
+                      disabled={savingCourse || departments.length === 0}
+                      data-ocid="admin.courses.add.submit_button"
+                    >
+                      {savingCourse && (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      )}
+                      Create Course
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </div>
+
+          <div className={CARD}>
+            {loadingCourses ? (
+              <div
+                className="flex items-center justify-center py-10"
+                data-ocid="admin.courses.loading_state"
+              >
+                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              </div>
+            ) : courses.length === 0 ? (
+              <div
+                className="text-center py-12"
+                data-ocid="admin.courses.empty_state"
+              >
+                <GraduationCap className="w-10 h-10 text-muted-foreground mx-auto mb-3" />
+                <p className="font-medium text-foreground">No courses yet</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Add departments first, then create courses under them.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Course Name</TableHead>
+                      <TableHead>Code</TableHead>
+                      <TableHead>Department</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {courses.map((course, i) => (
+                      <TableRow
+                        key={course.id}
+                        data-ocid={`admin.courses.row.${i + 1}`}
+                      >
+                        <TableCell className="font-medium">
+                          {course.name}
+                        </TableCell>
+                        <TableCell>
+                          <Badge className="border-0 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 text-xs font-mono">
+                            {course.code}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {getDeptName(course.departmentId)}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground">
+                          {course.duration}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <div className="flex gap-1.5 justify-end">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => openEditCourse(course)}
+                              data-ocid={`admin.courses.edit_button.${i + 1}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => handleDeleteCourse(course)}
+                              data-ocid={`admin.courses.delete_button.${i + 1}`}
+                            >
+                              <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </div>
+
+          {/* Edit Course Dialog */}
+          <Dialog
+            open={editCourseOpen}
+            onOpenChange={(open) => {
+              setEditCourseOpen(open);
+              if (!open) setEditingCourse(null);
+            }}
+          >
+            <DialogContent data-ocid="admin.courses.edit.dialog">
+              <DialogHeader>
+                <DialogTitle>Edit Course</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                {editingCourse && (
+                  <p className="text-xs text-muted-foreground">
+                    Department:{" "}
+                    <strong>{getDeptName(editingCourse.departmentId)}</strong>{" "}
+                    (not editable)
+                  </p>
+                )}
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-course-name">Course Name *</Label>
+                  <Input
+                    id="edit-course-name"
+                    placeholder="Course name"
+                    value={editCourseForm.name}
+                    onChange={(e) =>
+                      setEditCourseForm((p) => ({ ...p, name: e.target.value }))
+                    }
+                    data-ocid="admin.courses.edit.name.input"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-course-code">Code *</Label>
+                    <Input
+                      id="edit-course-code"
+                      placeholder="Course code"
+                      value={editCourseForm.code}
+                      onChange={(e) =>
+                        setEditCourseForm((p) => ({
+                          ...p,
+                          code: e.target.value,
+                        }))
+                      }
+                      data-ocid="admin.courses.edit.code.input"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="edit-course-duration">Duration *</Label>
+                    <Input
+                      id="edit-course-duration"
+                      placeholder="e.g. 3 Years"
+                      value={editCourseForm.duration}
+                      onChange={(e) =>
+                        setEditCourseForm((p) => ({
+                          ...p,
+                          duration: e.target.value,
+                        }))
+                      }
+                      data-ocid="admin.courses.edit.duration.input"
+                    />
+                  </div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={() => setEditCourseOpen(false)}
+                  data-ocid="admin.courses.edit.cancel_button"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleUpdateCourse}
+                  disabled={updatingCourse}
+                  data-ocid="admin.courses.edit.save_button"
+                >
+                  {updatingCourse && (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  )}
+                  Save Changes
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
+
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 export function AdminDashboard({ section }: { section: string }) {
   const { user } = useAuth();
@@ -671,6 +1753,18 @@ export function AdminDashboard({ section }: { section: string }) {
 
   if (section === "students") {
     return <AdminStudents collegeId={collegeId} token={token} />;
+  }
+
+  if (section === "departments") {
+    return (
+      <div className="p-6 space-y-5">
+        <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+          <BookOpen className="w-5 h-5 text-primary" /> Departments &amp;
+          Courses
+        </h2>
+        <DepartmentsSection collegeId={collegeId} token={token} />
+      </div>
+    );
   }
 
   if (section === "users") {

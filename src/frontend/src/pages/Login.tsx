@@ -184,11 +184,11 @@ export function Login() {
             {/* Error */}
             {error && (
               <div
-                className="flex items-center gap-2 text-destructive text-sm bg-destructive/8 rounded-lg px-3 py-2.5"
+                className="flex items-start gap-2 text-destructive text-sm bg-destructive/8 rounded-lg px-3 py-2.5"
                 data-ocid="login.error_state"
               >
-                <AlertCircle className="w-4 h-4 flex-shrink-0" />
-                {error}
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <span>{error}</span>
               </div>
             )}
 

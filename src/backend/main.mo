@@ -15,7 +15,10 @@ actor {
   let accessControlState = AccessControl.initState();
   include MixinAuthorization(accessControlState);
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Custom types for the ERP system
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public type UserRole = {
     #superAdmin;
     #admin;
@@ -31,6 +34,7 @@ actor {
     code : Text;
     address : Text;
     status : Text;
+    logoUrl : Text;  // Base64 data URL or empty string
     createdAt : Int;
   };
 
@@ -43,6 +47,7 @@ actor {
     collegeId : Text;
     name : Text;
     phone : Text;
+    photoUrl : Text;  // Base64 data URL or empty string — profile photo
     createdBy : Text;
     createdAt : Int;
     isActive : Bool;
@@ -115,20 +120,88 @@ actor {
     collegeId : Text;
   };
 
-  // State storage
-  stable var colleges = Map.empty<Text, College>();
-  stable var users = Map.empty<Text, User>();
+  public type Department = {
+    id : Text;
+    collegeId : Text;
+    name : Text;
+    code : Text;
+    createdAt : Int;
+  };
+
+  public type Course = {
+    id : Text;
+    collegeId : Text;
+    departmentId : Text;
+    name : Text;
+    code : Text;
+    duration : Text;  // e.g. "4 Years", "2 Years"
+    createdAt : Int;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Legacy types — used only for stable variable migration on upgrade
+  // These match the on-chain shape of data before the logoUrl/photoUrl additions
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  type CollegeLegacy = {
+    id : Text;
+    name : Text;
+    code : Text;
+    address : Text;
+    status : Text;
+    createdAt : Int;
+  };
+
+  type UserLegacy = {
+    id : Text;
+    username : Text;
+    email : Text;
+    passwordHash : Text;
+    role : UserRole;
+    collegeId : Text;
+    name : Text;
+    phone : Text;
+    createdBy : Text;
+    createdAt : Int;
+    isActive : Bool;
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Stable state — all data persists on-chain via ICP Stable Memory
+  // colleges_v2 and users_v2 hold the current schema (with logoUrl / photoUrl).
+  // On first upgrade from the old schema the postupgrade hook migrates legacy
+  // data from colleges / users into colleges_v2 / users_v2.
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  // Legacy stable vars — keep these to read old data on upgrade (DO NOT REMOVE)
+  stable var colleges : Map.Map<Text, CollegeLegacy> = Map.empty<Text, CollegeLegacy>();
+  stable var users : Map.Map<Text, UserLegacy> = Map.empty<Text, UserLegacy>();
+
+  // Current stable vars with new fields
+  stable var colleges_v2 = Map.empty<Text, College>();
+  stable var users_v2 = Map.empty<Text, User>();
+
   stable var sessions = Map.empty<Text, Session>();
   stable var studentRecords = Map.empty<Text, StudentRecord>();
   stable var teacherRecords = Map.empty<Text, TeacherRecord>();
   stable var notices = Map.empty<Text, Notice>();
   stable var feeRecords = Map.empty<Text, FeeRecord>();
+  stable var departments = Map.empty<Text, Department>();  // Per-college departments
+  stable var courses = Map.empty<Text, Course>();           // Per-college courses
   stable var userProfiles = Map.empty<Principal, UserProfile>();
+
+  // Tracks one active session per user for single-session roles
+  // (student, teacher, feeManager, principal)
+  // SuperAdmin and Admin are NOT tracked here — they support multi-device login
+  stable var activeSessionMap = Map.empty<Text, Text>(); // userId -> token
 
   stable var nextId : Nat = 0;
   stable var bootstrapped : Bool = false;
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Helper functions
+  // ─────────────────────────────────────────────────────────────────────────────
+
   func generateId() : Text {
     nextId += 1;
     "id_" # nextId.toText();
@@ -174,20 +247,9 @@ actor {
     };
   };
 
-  func requireSameCollege(session : Session, collegeId : Text) {
-    switch (session.role) {
-      case (#superAdmin) {}; // SuperAdmin can access all colleges
-      case _ {
-        if (session.collegeId != collegeId) {
-          Runtime.trap("Unauthorized: Access denied to different college data");
-        };
-      };
-    };
-  };
-
   func requireCollegeAccess(session : Session, collegeId : Text) {
     switch (session.role) {
-      case (#superAdmin) {}; // SuperAdmin can access all
+      case (#superAdmin) {};
       case _ {
         if (session.collegeId != collegeId) {
           Runtime.trap("Unauthorized: Cannot access data from different college");
@@ -196,7 +258,22 @@ actor {
     };
   };
 
-  // Bootstrap SuperAdmin
+  // Returns true if this role enforces single-device login
+  func isSingleSessionRole(role : UserRole) : Bool {
+    switch (role) {
+      case (#student) { true };
+      case (#teacher) { true };
+      case (#feeManager) { true };
+      case (#principal) { true };
+      case _ { false }; // superAdmin and admin: multi-device allowed
+    };
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Bootstrap SuperAdmin — runs once on first deployment
+  // Stored in stable memory so it persists across upgrades and restarts
+  // ─────────────────────────────────────────────────────────────────────────────
+
   func bootstrap() {
     if (not bootstrapped) {
       let superAdminId = generateId();
@@ -204,24 +281,27 @@ actor {
         id = superAdminId;
         username = "vikassirvi77288";
         email = "vikassirvi001@gmail.com";
-        passwordHash = "vikas@sirvi_77288"; // Plain password for demo
+        passwordHash = "vikas@sirvi_77288";
         role = #superAdmin;
         collegeId = "";
         name = "Super Admin";
         phone = "";
+        photoUrl = "";  // No photo initially
         createdBy = superAdminId;
         createdAt = getCurrentTime();
         isActive = true;
       };
-      users.add(superAdminId, superAdmin);
+      users_v2.add(superAdminId, superAdmin);
       bootstrapped := true;
     };
   };
 
-  // Initialize on first call
   bootstrap();
 
-  // User Profile functions (required by frontend)
+  // ─────────────────────────────────────────────────────────────────────────────
+  // User Profile functions (required by authorization mixin)
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public query ({ caller }) func getCallerUserProfile() : async ?UserProfile {
     userProfiles.get(caller);
   };
@@ -240,17 +320,20 @@ actor {
     userProfiles.add(caller, profile);
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Authentication
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func login(username : Text, password : Text) : async {
     token : Text;
     userId : Text;
     role : UserRole;
     collegeId : Text;
     name : Text;
+    photoUrl : Text;
   } {
     var foundUser : ?User = null;
-    for ((_, user) in users.entries()) {
-      // Match by username OR email (admins log in with email)
+    for ((_, user) in users_v2.entries()) {
       if ((user.username == username or user.email == username) and user.passwordHash == password and user.isActive) {
         foundUser := ?user;
       };
@@ -259,35 +342,78 @@ actor {
     switch (foundUser) {
       case null { Runtime.trap("Invalid credentials") };
       case (?user) {
+        // Enforce single-device session for student/teacher/feeManager/principal
+        if (isSingleSessionRole(user.role)) {
+          switch (activeSessionMap.get(user.id)) {
+            case (?existingToken) {
+              switch (validateSession(existingToken)) {
+                case (?_) {
+                  Runtime.trap("already_logged_in");
+                };
+                case null {
+                  activeSessionMap.remove(user.id);
+                };
+              };
+            };
+            case null {};
+          };
+        };
+
+        // Create new session (24-hour expiry)
         let token = generateId() # "_token";
         let session : Session = {
           token = token;
           userId = user.id;
           role = user.role;
           collegeId = user.collegeId;
-          expiresAt = getCurrentTime() + 86400_000_000_000; // 24 hours
+          expiresAt = getCurrentTime() + 86400_000_000_000;
         };
         sessions.add(token, session);
+
+        // Track active session for single-session roles
+        if (isSingleSessionRole(user.role)) {
+          activeSessionMap.add(user.id, token);
+        };
+
         {
           token = token;
           userId = user.id;
           role = user.role;
           collegeId = user.collegeId;
           name = user.name;
+          photoUrl = user.photoUrl;
         };
       };
     };
   };
 
   public func logout(token : Text) : async () {
-    sessions.remove(token);
+    switch (sessions.get(token)) {
+      case (?session) {
+        if (isSingleSessionRole(session.role)) {
+          switch (activeSessionMap.get(session.userId)) {
+            case (?activeToken) {
+              if (activeToken == token) {
+                activeSessionMap.remove(session.userId);
+              };
+            };
+            case null {};
+          };
+        };
+        sessions.remove(token);
+      };
+      case null {};
+    };
   };
 
   public query func getSession(token : Text) : async ?Session {
     validateSession(token);
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // College Management
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func createCollege(token : Text, name : Text, code : Text, address : Text) : async College {
     let session = requireSession(token);
     requireSuperAdmin(session);
@@ -299,9 +425,10 @@ actor {
       code = code;
       address = address;
       status = "active";
+      logoUrl = "";  // No logo by default
       createdAt = getCurrentTime();
     };
-    colleges.add(collegeId, college);
+    colleges_v2.add(collegeId, college);
     college;
   };
 
@@ -310,12 +437,10 @@ actor {
 
     switch (session.role) {
       case (#superAdmin) {
-        // SuperAdmin sees all colleges
-        colleges.entries().map(func((_, c) : (Text, College)) : College { c }).toArray();
+        colleges_v2.entries().map(func((_, c) : (Text, College)) : College { c }).toArray();
       };
       case (#admin) {
-        // Admin sees only their college
-        switch (colleges.get(session.collegeId)) {
+        switch (colleges_v2.get(session.collegeId)) {
           case null { [] };
           case (?college) { [college] };
         };
@@ -330,7 +455,7 @@ actor {
     let session = requireSession(token);
     requireCollegeAccess(session, collegeId);
 
-    switch (colleges.get(collegeId)) {
+    switch (colleges_v2.get(collegeId)) {
       case null { Runtime.trap("College not found") };
       case (?college) { college };
     };
@@ -340,7 +465,7 @@ actor {
     let session = requireSession(token);
     requireSuperAdmin(session);
 
-    switch (colleges.get(collegeId)) {
+    switch (colleges_v2.get(collegeId)) {
       case null { Runtime.trap("College not found") };
       case (?college) {
         let updated : College = {
@@ -349,22 +474,48 @@ actor {
           code = college.code;
           address = address;
           status = status;
+          logoUrl = college.logoUrl;  // Preserve existing logo
           createdAt = college.createdAt;
         };
-        colleges.add(collegeId, updated);
+        colleges_v2.add(collegeId, updated);
         updated;
       };
     };
   };
 
+  // Upload or update logo for a college (base64 data URL)
+  public func uploadCollegeLogo(token : Text, collegeId : Text, logoDataUrl : Text) : async College {
+    let session = requireSession(token);
+    requireSuperAdmin(session);
+
+    switch (colleges_v2.get(collegeId)) {
+      case null { Runtime.trap("College not found") };
+      case (?college) {
+        let updated : College = {
+          id = college.id;
+          name = college.name;
+          code = college.code;
+          address = college.address;
+          status = college.status;
+          logoUrl = logoDataUrl;
+          createdAt = college.createdAt;
+        };
+        colleges_v2.add(collegeId, updated);
+        updated;
+      };
+    };
+  };
 
   public func deleteCollege(token : Text, collegeId : Text) : async () {
     let session = requireSession(token);
     requireSuperAdmin(session);
-    colleges.remove(collegeId);
+    colleges_v2.remove(collegeId);
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // User Management
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func createUser(
     token : Text,
     username : Text,
@@ -377,21 +528,17 @@ actor {
   ) : async User {
     let session = requireSession(token);
 
-    // Authorization checks
     switch (session.role) {
       case (#superAdmin) {
-        // SuperAdmin can create Admin users for any college
         switch (role) {
           case (#admin) {};
           case _ { Runtime.trap("SuperAdmin can only create Admin users") };
         };
       };
       case (#admin) {
-        // Admin can create users only for their own college
         if (collegeId != session.collegeId) {
           Runtime.trap("Unauthorized: Cannot create users for different college");
         };
-        // Admin cannot create SuperAdmin or Admin
         switch (role) {
           case (#superAdmin) { Runtime.trap("Cannot create SuperAdmin") };
           case (#admin) { Runtime.trap("Cannot create Admin users") };
@@ -413,19 +560,18 @@ actor {
       collegeId = collegeId;
       name = name;
       phone = phone;
+      photoUrl = "";  // No photo initially
       createdBy = session.userId;
       createdAt = getCurrentTime();
       isActive = true;
     };
-    users.add(userId, user);
+    users_v2.add(userId, user);
     user;
   };
 
   public query func listUsers(token : Text, collegeId : Text, roleFilter : Text) : async [User] {
     let session = requireSession(token);
 
-    // SuperAdmin can list across all colleges (pass empty collegeId)
-    // Others must pass their own collegeId
     switch (session.role) {
       case (#superAdmin) {};
       case _ {
@@ -435,8 +581,7 @@ actor {
       };
     };
 
-    let filtered = users.entries().filter(func((_, user) : (Text, User)) : Bool {
-      // If collegeId is empty and caller is SuperAdmin, return all matching role
+    let filtered = users_v2.entries().filter(func((_, user) : (Text, User)) : Bool {
       let collegeMatch = (collegeId == "" and session.role == #superAdmin) or user.collegeId == collegeId;
       let roleMatch = roleFilter == "" or roleToText(user.role) == roleFilter;
       collegeMatch and roleMatch
@@ -447,7 +592,7 @@ actor {
   public query func getUser(token : Text, userId : Text) : async User {
     let session = requireSession(token);
 
-    switch (users.get(userId)) {
+    switch (users_v2.get(userId)) {
       case null { Runtime.trap("User not found") };
       case (?user) {
         requireCollegeAccess(session, user.collegeId);
@@ -459,7 +604,7 @@ actor {
   public func updateUser(token : Text, userId : Text, name : Text, email : Text, phone : Text, isActive : Bool) : async User {
     let session = requireSession(token);
 
-    switch (users.get(userId)) {
+    switch (users_v2.get(userId)) {
       case null { Runtime.trap("User not found") };
       case (?user) {
         requireCollegeAccess(session, user.collegeId);
@@ -474,11 +619,42 @@ actor {
           collegeId = user.collegeId;
           name = name;
           phone = phone;
+          photoUrl = user.photoUrl;  // Preserve existing photo
           createdBy = user.createdBy;
           createdAt = user.createdAt;
           isActive = isActive;
         };
-        users.add(userId, updated);
+        users_v2.add(userId, updated);
+        updated;
+      };
+    };
+  };
+
+  // Upload or update profile photo for a user (base64 data URL)
+  // SuperAdmin can upload for any user; Admin can upload for users in their college
+  public func uploadUserPhoto(token : Text, userId : Text, photoDataUrl : Text) : async User {
+    let session = requireSession(token);
+    requireAdminOrSuperAdmin(session);
+
+    switch (users_v2.get(userId)) {
+      case null { Runtime.trap("User not found") };
+      case (?user) {
+        requireCollegeAccess(session, user.collegeId);
+        let updated : User = {
+          id = user.id;
+          username = user.username;
+          email = user.email;
+          passwordHash = user.passwordHash;
+          role = user.role;
+          collegeId = user.collegeId;
+          name = user.name;
+          phone = user.phone;
+          photoUrl = photoDataUrl;
+          createdBy = user.createdBy;
+          createdAt = user.createdAt;
+          isActive = user.isActive;
+        };
+        users_v2.add(userId, updated);
         updated;
       };
     };
@@ -487,7 +663,7 @@ actor {
   public func resetPassword(token : Text, userId : Text, newPassword : Text) : async () {
     let session = requireSession(token);
 
-    switch (users.get(userId)) {
+    switch (users_v2.get(userId)) {
       case null { Runtime.trap("User not found") };
       case (?user) {
         requireCollegeAccess(session, user.collegeId);
@@ -502,11 +678,12 @@ actor {
           collegeId = user.collegeId;
           name = user.name;
           phone = user.phone;
+          photoUrl = user.photoUrl;  // Preserve existing photo
           createdBy = user.createdBy;
           createdAt = user.createdAt;
           isActive = user.isActive;
         };
-        users.add(userId, updated);
+        users_v2.add(userId, updated);
       };
     };
   };
@@ -514,17 +691,21 @@ actor {
   public func deleteUser(token : Text, userId : Text) : async () {
     let session = requireSession(token);
 
-    switch (users.get(userId)) {
+    switch (users_v2.get(userId)) {
       case null { Runtime.trap("User not found") };
       case (?user) {
         requireCollegeAccess(session, user.collegeId);
         requireAdminOrSuperAdmin(session);
-        users.remove(userId);
+        activeSessionMap.remove(userId);
+        users_v2.remove(userId);
       };
     };
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Student Records
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func addStudentRecord(
     token : Text,
     collegeId : Text,
@@ -596,7 +777,10 @@ actor {
     };
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Teacher Records
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func addTeacherRecord(
     token : Text,
     collegeId : Text,
@@ -634,7 +818,10 @@ actor {
     filtered.map(func((_, r) : (Text, TeacherRecord)) : TeacherRecord { r }).toArray();
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Notice Board
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func createNotice(
     token : Text,
     collegeId : Text,
@@ -670,7 +857,10 @@ actor {
     filtered.map(func((_, n) : (Text, Notice)) : Notice { n }).toArray();
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   // Fee Records
+  // ─────────────────────────────────────────────────────────────────────────────
+
   public func addFeeRecord(
     token : Text,
     collegeId : Text,
@@ -683,7 +873,6 @@ actor {
     let session = requireSession(token);
     requireCollegeAccess(session, collegeId);
 
-    // Only Admin or FeeManager can add fee records
     switch (session.role) {
       case (#superAdmin) {};
       case (#admin) {};
@@ -723,7 +912,6 @@ actor {
       case (?record) {
         requireCollegeAccess(session, record.collegeId);
 
-        // Only Admin or FeeManager can update fee records
         switch (session.role) {
           case (#superAdmin) {};
           case (#admin) {};
@@ -746,7 +934,196 @@ actor {
     };
   };
 
-  // Helper function to convert role to text
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Department Management
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  public func createDepartment(token : Text, collegeId : Text, name : Text, code : Text) : async Department {
+    let session = requireSession(token);
+    requireCollegeAccess(session, collegeId);
+    requireAdminOrSuperAdmin(session);
+
+    let deptId = generateId();
+    let dept : Department = {
+      id = deptId;
+      collegeId = collegeId;
+      name = name;
+      code = code;
+      createdAt = getCurrentTime();
+    };
+    departments.add(deptId, dept);
+    dept;
+  };
+
+  public query func listDepartments(token : Text, collegeId : Text) : async [Department] {
+    let session = requireSession(token);
+    requireCollegeAccess(session, collegeId);
+
+    let filtered = departments.entries().filter(func((_, d) : (Text, Department)) : Bool {
+      d.collegeId == collegeId;
+    });
+    filtered.map(func((_, d) : (Text, Department)) : Department { d }).toArray();
+  };
+
+  public func updateDepartment(token : Text, deptId : Text, name : Text, code : Text) : async Department {
+    let session = requireSession(token);
+    requireAdminOrSuperAdmin(session);
+
+    switch (departments.get(deptId)) {
+      case null { Runtime.trap("Department not found") };
+      case (?dept) {
+        requireCollegeAccess(session, dept.collegeId);
+        let updated : Department = {
+          id = dept.id;
+          collegeId = dept.collegeId;
+          name = name;
+          code = code;
+          createdAt = dept.createdAt;
+        };
+        departments.add(deptId, updated);
+        updated;
+      };
+    };
+  };
+
+  public func deleteDepartment(token : Text, deptId : Text) : async () {
+    let session = requireSession(token);
+    requireAdminOrSuperAdmin(session);
+
+    switch (departments.get(deptId)) {
+      case null { Runtime.trap("Department not found") };
+      case (?dept) {
+        requireCollegeAccess(session, dept.collegeId);
+        departments.remove(deptId);
+      };
+    };
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Course Management
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  public func createCourse(token : Text, collegeId : Text, departmentId : Text, name : Text, code : Text, duration : Text) : async Course {
+    let session = requireSession(token);
+    requireCollegeAccess(session, collegeId);
+    requireAdminOrSuperAdmin(session);
+
+    let courseId = generateId();
+    let course : Course = {
+      id = courseId;
+      collegeId = collegeId;
+      departmentId = departmentId;
+      name = name;
+      code = code;
+      duration = duration;
+      createdAt = getCurrentTime();
+    };
+    courses.add(courseId, course);
+    course;
+  };
+
+  public query func listCourses(token : Text, collegeId : Text) : async [Course] {
+    let session = requireSession(token);
+    requireCollegeAccess(session, collegeId);
+
+    let filtered = courses.entries().filter(func((_, c) : (Text, Course)) : Bool {
+      c.collegeId == collegeId;
+    });
+    filtered.map(func((_, c) : (Text, Course)) : Course { c }).toArray();
+  };
+
+  public func updateCourse(token : Text, courseId : Text, name : Text, code : Text, duration : Text) : async Course {
+    let session = requireSession(token);
+    requireAdminOrSuperAdmin(session);
+
+    switch (courses.get(courseId)) {
+      case null { Runtime.trap("Course not found") };
+      case (?course) {
+        requireCollegeAccess(session, course.collegeId);
+        let updated : Course = {
+          id = course.id;
+          collegeId = course.collegeId;
+          departmentId = course.departmentId;
+          name = name;
+          code = code;
+          duration = duration;
+          createdAt = course.createdAt;
+        };
+        courses.add(courseId, updated);
+        updated;
+      };
+    };
+  };
+
+  public func deleteCourse(token : Text, courseId : Text) : async () {
+    let session = requireSession(token);
+    requireAdminOrSuperAdmin(session);
+
+    switch (courses.get(courseId)) {
+      case null { Runtime.trap("Course not found") };
+      case (?course) {
+        requireCollegeAccess(session, course.collegeId);
+        courses.remove(courseId);
+      };
+    };
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Migration — runs after every upgrade
+  // Copies legacy colleges/users (old schema) into colleges_v2/users_v2 if they
+  // haven't been migrated yet (i.e. colleges_v2 is empty but colleges has data).
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  system func postupgrade() {
+    // Migrate colleges: add logoUrl = "" for any entry not yet in colleges_v2
+    for ((id, c) in colleges.entries()) {
+      switch (colleges_v2.get(id)) {
+        case null {
+          let migrated : College = {
+            id = c.id;
+            name = c.name;
+            code = c.code;
+            address = c.address;
+            status = c.status;
+            logoUrl = "";
+            createdAt = c.createdAt;
+          };
+          colleges_v2.add(id, migrated);
+        };
+        case (?_) {}; // already migrated
+      };
+    };
+
+    // Migrate users: add photoUrl = "" for any entry not yet in users_v2
+    for ((id, u) in users.entries()) {
+      switch (users_v2.get(id)) {
+        case null {
+          let migrated : User = {
+            id = u.id;
+            username = u.username;
+            email = u.email;
+            passwordHash = u.passwordHash;
+            role = u.role;
+            collegeId = u.collegeId;
+            name = u.name;
+            phone = u.phone;
+            photoUrl = "";
+            createdBy = u.createdBy;
+            createdAt = u.createdAt;
+            isActive = u.isActive;
+          };
+          users_v2.add(id, migrated);
+        };
+        case (?_) {}; // already migrated
+      };
+    };
+  };
+
+  // ─────────────────────────────────────────────────────────────────────────────
+  // Utility
+  // ─────────────────────────────────────────────────────────────────────────────
+
   func roleToText(role : UserRole) : Text {
     switch (role) {
       case (#superAdmin) { "superAdmin" };

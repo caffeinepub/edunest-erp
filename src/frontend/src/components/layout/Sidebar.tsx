@@ -61,6 +61,7 @@ const navConfig: Record<UserRole, NavItem[]> = {
   admin: [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "students", label: "Students", icon: GraduationCap },
+    { id: "departments", label: "Departments & Courses", icon: BookOpen },
     { id: "users", label: "User Management", icon: Users },
     { id: "notices", label: "Notices", icon: Bell },
     { id: "security", label: "Password Reset", icon: Shield },
@@ -85,6 +86,13 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
 
   if (!user) return null;
   const items = navConfig[user.role] ?? [];
+
+  const initials = user.name
+    .split(" ")
+    .map((w) => w[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 
   const SidebarContent = () => (
     <div
@@ -152,16 +160,18 @@ export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
       {/* User info */}
       <div className="px-4 py-4 border-t border-white/10">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full bg-primary/30 flex items-center justify-center flex-shrink-0">
-            <span className="text-white text-xs font-bold">
-              {user.name
-                .split(" ")
-                .map((w) => w[0])
-                .join("")
-                .slice(0, 2)
-                .toUpperCase()}
-            </span>
-          </div>
+          {/* Avatar: show photo if available, else initials circle */}
+          {user.photoUrl ? (
+            <img
+              src={user.photoUrl}
+              alt={user.name}
+              className="w-8 h-8 rounded-full object-cover border border-white/20 flex-shrink-0"
+            />
+          ) : (
+            <div className="w-8 h-8 rounded-full bg-primary/30 flex items-center justify-center flex-shrink-0">
+              <span className="text-white text-xs font-bold">{initials}</span>
+            </div>
+          )}
           <div className="min-w-0">
             <p className="text-white text-xs font-medium truncate">
               {user.name.split(" ").slice(0, 2).join(" ")}

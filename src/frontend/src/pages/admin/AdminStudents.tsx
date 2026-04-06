@@ -19,14 +19,16 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+  Camera,
   GraduationCap,
+  ImageIcon,
   Loader2,
   Plus,
   RefreshCw,
   Search,
   UserPlus,
 } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { StudentRecord, User } from "../../backend";
 import { UserRole } from "../../backend";
@@ -45,15 +47,144 @@ const DEPARTMENTS = [
 ];
 const COURSES = ["BTech", "Diploma", "BCA", "MCA", "MTech"];
 
+// ── Upload Student Photo Dialog ────────────────────────────────────────────────
+function UploadStudentPhotoDialog({
+  student,
+  token,
+  onUpdated,
+}: {
+  student: User & { photoUrl?: string };
+  token: string;
+  onUpdated: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => setPhotoDataUrl(evt.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!photoDataUrl) {
+      toast.error("Please select an image.");
+      return;
+    }
+    setLoading(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: uploadUserPhoto added in backend runtime
+      await (backend as any).uploadUserPhoto(token, student.id, photoDataUrl);
+      toast.success(`Photo uploaded for "${student.name}"!`);
+      setOpen(false);
+      setPhotoDataUrl("");
+      onUpdated();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to upload photo",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setOpen(v);
+        if (!v) setPhotoDataUrl("");
+      }}
+    >
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-7 px-2 text-xs"
+          data-ocid="admin.students.photo.open_modal_button"
+        >
+          <ImageIcon className="w-3 h-3 mr-1" /> Photo
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-ocid="admin.students.photo.dialog">
+        <DialogHeader>
+          <DialogTitle>Upload Student Photo</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          {student.photoUrl && !photoDataUrl && (
+            <div className="flex items-center gap-3">
+              <img
+                src={student.photoUrl}
+                alt={student.name}
+                className="w-14 h-14 rounded-full object-cover border border-border"
+              />
+              <span className="text-xs text-muted-foreground">
+                Current photo. Upload to replace.
+              </span>
+            </div>
+          )}
+          {photoDataUrl && (
+            <div className="flex items-center gap-3">
+              <img
+                src={photoDataUrl}
+                alt="Preview"
+                className="w-14 h-14 rounded-full object-cover border border-border"
+              />
+              <span className="text-xs text-muted-foreground">
+                New photo preview
+              </span>
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label htmlFor={`student-photo-${student.id}`}>Select Photo</Label>
+            <Input
+              id={`student-photo-${student.id}`}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              data-ocid="admin.students.photo.upload_button"
+              className="cursor-pointer file:cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setOpen(false)}
+            data-ocid="admin.students.photo.cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={loading || !photoDataUrl}
+            data-ocid="admin.students.photo.submit_button"
+          >
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {loading ? "Uploading..." : "Save Photo"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── All Students Tab ────────────────────────────────────────────────────────────
 function AllStudentsTab({
   students,
   studentRecords,
   loading,
+  token,
+  onRefresh,
 }: {
-  students: User[];
+  students: (User & { photoUrl?: string })[];
   studentRecords: StudentRecord[];
   loading: boolean;
+  token: string;
+  onRefresh: () => void;
 }) {
   const [search, setSearch] = useState("");
 
@@ -105,6 +236,7 @@ function AllStudentsTab({
               <thead>
                 <tr className="border-b border-border">
                   {[
+                    "Photo",
                     "#",
                     "Name",
                     "Username",
@@ -112,6 +244,7 @@ function AllStudentsTab({
                     "Roll No",
                     "Year",
                     "Status",
+                    "Actions",
                   ].map((h) => (
                     <th
                       key={h}
@@ -131,6 +264,24 @@ function AllStudentsTab({
                       className="border-b border-border last:border-0 hover:bg-muted/30 transition-colors"
                       data-ocid={`admin.students.row.${i + 1}`}
                     >
+                      <td className="py-2.5 pr-4">
+                        {s.photoUrl ? (
+                          <img
+                            src={s.photoUrl}
+                            alt={s.name}
+                            className="w-9 h-9 rounded-full object-cover border border-border"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                            {s.name
+                              .split(" ")
+                              .map((w) => w[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                        )}
+                      </td>
                       <td className="py-2.5 pr-4 text-muted-foreground">
                         {i + 1}
                       </td>
@@ -149,7 +300,7 @@ function AllStudentsTab({
                       <td className="py-2.5 pr-4 text-muted-foreground">
                         {rec?.year || "—"}
                       </td>
-                      <td className="py-2.5">
+                      <td className="py-2.5 pr-4">
                         <Badge
                           className={`border-0 text-xs ${
                             s.isActive
@@ -159,6 +310,13 @@ function AllStudentsTab({
                         >
                           {s.isActive ? "Active" : "Inactive"}
                         </Badge>
+                      </td>
+                      <td className="py-2.5">
+                        <UploadStudentPhotoDialog
+                          student={s}
+                          token={token}
+                          onUpdated={onRefresh}
+                        />
                       </td>
                     </tr>
                   );
@@ -181,6 +339,8 @@ function AddStudentTab({
   token,
   onCreated,
 }: { collegeId: string; token: string; onCreated: () => void }) {
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
     name: "",
     username: "",
@@ -207,6 +367,14 @@ function AddStudentTab({
 
   const set = (k: keyof typeof form, v: string) =>
     setForm((p) => ({ ...p, [k]: v }));
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async () => {
     if (!form.name || !form.username || !form.password) {
@@ -248,6 +416,19 @@ function AddStudentTab({
           BigInt(form.busFee || "0"),
         );
       }
+      // Upload photo inline if provided
+      if (photoDataUrl) {
+        try {
+          // biome-ignore lint/suspicious/noExplicitAny: uploadUserPhoto added in backend runtime
+          await (backend as any).uploadUserPhoto(
+            token,
+            newUser.id,
+            photoDataUrl,
+          );
+        } catch {
+          toast.error("Student added but photo upload failed.");
+        }
+      }
       toast.success(`Student "${form.name}" added!`);
       setForm({
         name: "",
@@ -271,6 +452,8 @@ function AddStudentTab({
         hostelFee: "",
         busFee: "",
       });
+      setPhotoDataUrl("");
+      if (photoInputRef.current) photoInputRef.current.value = "";
       onCreated();
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to add student");
@@ -504,6 +687,52 @@ function AddStudentTab({
             College ID (auto-assigned): <strong>{collegeId}</strong>
           </div>
         </div>
+        {/* Student Photo Upload */}
+        <div className="sm:col-span-2">
+          <span className={LABEL}>Student Photo (Optional)</span>
+          <div className="flex items-center gap-4 mt-1">
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="w-20 h-20 rounded-full border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-primary transition-colors overflow-hidden bg-muted flex-shrink-0"
+              data-ocid="admin.add_student.photo.dropzone"
+            >
+              {photoDataUrl ? (
+                <img
+                  src={photoDataUrl}
+                  alt="Preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Camera className="w-6 h-6 text-muted-foreground" />
+              )}
+            </button>
+            <div>
+              <p className="text-xs text-muted-foreground">
+                Click to upload student photo
+              </p>
+              {photoDataUrl && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPhotoDataUrl("");
+                    if (photoInputRef.current) photoInputRef.current.value = "";
+                  }}
+                  className="text-xs text-muted-foreground hover:text-destructive transition-colors mt-1"
+                >
+                  Remove
+                </button>
+              )}
+            </div>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelect}
+            />
+          </div>
+        </div>
       </div>
 
       <Button
@@ -594,9 +823,11 @@ export function AdminStudents({
 
         <TabsContent value="all">
           <AllStudentsTab
-            students={students}
+            students={students as (User & { photoUrl?: string })[]}
             studentRecords={studentRecords}
             loading={loading}
+            token={token}
+            onRefresh={fetchData}
           />
         </TabsContent>
         <TabsContent value="add">

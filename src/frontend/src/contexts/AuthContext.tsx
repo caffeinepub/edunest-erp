@@ -14,6 +14,7 @@ export interface AuthUser {
   role: UserRole;
   collegeId: string;
   name: string;
+  photoUrl?: string;
 }
 
 interface AuthContextType {
@@ -60,6 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             role: session.role,
             collegeId: session.collegeId,
             name: parsed.name,
+            photoUrl: parsed.photoUrl,
           });
         } else {
           localStorage.removeItem(STORAGE_KEY);
@@ -76,19 +78,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     password: string,
   ): Promise<{ success: boolean; error?: string }> => {
     try {
-      const result = await backend.login(username, password);
+      // biome-ignore lint/suspicious/noExplicitAny: backend type may lag behind actual response shape
+      const result = (await backend.login(username, password)) as any;
       const authUser: AuthUser = {
         token: result.token,
         userId: result.userId,
         role: result.role,
         collegeId: result.collegeId,
         name: result.name,
+        photoUrl: result.photoUrl as string | undefined,
       };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
       setUser(authUser);
       return { success: true };
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Invalid credentials";
+      const raw = err instanceof Error ? err.message : String(err);
+      if (raw.includes("already_logged_in")) {
+        return {
+          success: false,
+          error:
+            "You are already logged in on another device. Please log out from that device first before logging in here.",
+        };
+      }
+      const msg = raw.includes("Invalid credentials")
+        ? "Invalid credentials. Please check your username and password."
+        : raw;
       return { success: false, error: msg };
     }
   };

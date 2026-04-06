@@ -27,6 +27,8 @@ import {
 } from "@/components/ui/table";
 import {
   Building2,
+  Camera,
+  ImageIcon,
   Loader2,
   Plus,
   RefreshCw,
@@ -34,14 +36,20 @@ import {
   Users,
 } from "lucide-react";
 import { motion } from "motion/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { College, User } from "../../backend";
 import { UserRole } from "../../backend";
 import { backendAPI as backend } from "../../backendAPI";
 import { useAuth } from "../../contexts/AuthContext";
 
+// Extended user type with optional photoUrl (backend runtime supports it)
+type UserWithPhoto = User & { photoUrl?: string };
+
 const CARD = "bg-card rounded-2xl border border-border shadow-card p-5";
+
+// Extend College with optional logoUrl (backend supports it even if generated types lag)
+type CollegeWithLogo = College & { logoUrl?: string };
 
 function StatCard({
   icon: Icon,
@@ -75,6 +83,299 @@ function StatCard({
   );
 }
 
+// ── Upload Logo Dialog ──────────────────────────────────────────────────────
+function UploadLogoDialog({
+  college,
+  token,
+  onUpdated,
+}: { college: CollegeWithLogo; token: string; onUpdated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [logoDataUrl, setLogoDataUrl] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const dataUrl = evt.target?.result as string;
+      setLogoDataUrl(dataUrl);
+      setPreviewUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!logoDataUrl) {
+      toast.error("Please select an image first.");
+      return;
+    }
+    setLoading(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: uploadCollegeLogo added in backend but not yet in generated types
+      await (backend as any).uploadCollegeLogo(token, college.id, logoDataUrl);
+      toast.success(`Logo uploaded for "${college.name}"!`);
+      setOpen(false);
+      setPreviewUrl("");
+      setLogoDataUrl("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      onUpdated();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to upload logo");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
+      setPreviewUrl("");
+      setLogoDataUrl("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          data-ocid="super.colleges.logo.open_modal_button"
+        >
+          <ImageIcon className="w-4 h-4 mr-1" /> Logo
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-ocid="super.colleges.logo.dialog">
+        <DialogHeader>
+          <DialogTitle>Upload College Logo</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            Upload a logo for <strong>{college.name}</strong>
+          </p>
+
+          {/* Current logo preview */}
+          {college.logoUrl && !previewUrl && (
+            <div className="space-y-1.5">
+              <Label>Current Logo</Label>
+              <div className="flex items-center gap-3">
+                <img
+                  src={college.logoUrl}
+                  alt={`${college.name} logo`}
+                  className="w-16 h-16 rounded-lg object-cover border border-border"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Logo already set. Upload a new one to replace it.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* New image preview */}
+          {previewUrl && (
+            <div className="space-y-1.5">
+              <Label>Preview</Label>
+              <div className="flex items-center justify-center rounded-xl border border-border bg-muted/30 p-3">
+                <img
+                  src={previewUrl}
+                  alt="Logo preview"
+                  className="max-h-[120px] max-w-full rounded-lg object-contain"
+                />
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="logo-file">Select Image *</Label>
+            <Input
+              id="logo-file"
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              data-ocid="super.colleges.logo.upload_button"
+              className="cursor-pointer file:cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+            />
+            <p className="text-xs text-muted-foreground">
+              Supports JPG, PNG, GIF, WebP. Recommended size: 200×200px.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            data-ocid="super.colleges.logo.cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={loading || !logoDataUrl}
+            data-ocid="super.colleges.logo.submit_button"
+          >
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {loading ? "Uploading..." : "Save Logo"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Upload User Photo Dialog (for admins) ─────────────────────────────────────
+function UploadUserPhotoDialog({
+  user: targetUser,
+  token,
+  onUpdated,
+}: { user: UserWithPhoto; token: string; onUpdated: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string>("");
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const dataUrl = evt.target?.result as string;
+      setPhotoDataUrl(dataUrl);
+      setPreviewUrl(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSubmit = async () => {
+    if (!photoDataUrl) {
+      toast.error("Please select an image first.");
+      return;
+    }
+    setLoading(true);
+    try {
+      // biome-ignore lint/suspicious/noExplicitAny: uploadUserPhoto added in backend runtime
+      await (backend as any).uploadUserPhoto(
+        token,
+        targetUser.id,
+        photoDataUrl,
+      );
+      toast.success(`Photo uploaded for "${targetUser.name}"!`);
+      setOpen(false);
+      setPreviewUrl("");
+      setPhotoDataUrl("");
+      onUpdated();
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to upload photo",
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) {
+      setPreviewUrl("");
+      setPhotoDataUrl("");
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          data-ocid="super.admins.photo.open_modal_button"
+        >
+          <ImageIcon className="w-3.5 h-3.5 mr-1" /> Photo
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-ocid="super.admins.photo.dialog">
+        <DialogHeader>
+          <DialogTitle>Upload Profile Photo</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <p className="text-sm text-muted-foreground">
+            Upload a profile photo for <strong>{targetUser.name}</strong>
+          </p>
+
+          {/* Current photo preview */}
+          {targetUser.photoUrl && !previewUrl && (
+            <div className="space-y-1.5">
+              <Label>Current Photo</Label>
+              <div className="flex items-center gap-3">
+                <img
+                  src={targetUser.photoUrl}
+                  alt={targetUser.name}
+                  className="w-14 h-14 rounded-full object-cover border border-border"
+                />
+                <span className="text-xs text-muted-foreground">
+                  Photo already set. Upload a new one to replace it.
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* New image preview */}
+          {previewUrl && (
+            <div className="space-y-1.5">
+              <Label>Preview</Label>
+              <div className="flex items-center gap-3">
+                <img
+                  src={previewUrl}
+                  alt="Preview"
+                  className="w-16 h-16 rounded-full object-cover border border-border"
+                />
+                <span className="text-xs text-muted-foreground">
+                  This will be saved as the profile photo.
+                </span>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-1.5">
+            <Label htmlFor="admin-photo-file">Select Photo *</Label>
+            <Input
+              id="admin-photo-file"
+              type="file"
+              accept="image/*"
+              onChange={handleFileChange}
+              data-ocid="super.admins.photo.upload_button"
+              className="cursor-pointer file:cursor-pointer file:mr-3 file:py-1 file:px-3 file:rounded-md file:border-0 file:text-xs file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+            />
+            <p className="text-xs text-muted-foreground">
+              Supports JPG, PNG, GIF, WebP. Recommended: 200×200px or square.
+            </p>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            data-ocid="super.admins.photo.cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={loading || !photoDataUrl}
+            data-ocid="super.admins.photo.submit_button"
+          >
+            {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            {loading ? "Uploading..." : "Save Photo"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Add College Dialog ──────────────────────────────────────────────────────
 function AddCollegeDialog({
   token,
@@ -82,7 +383,28 @@ function AddCollegeDialog({
 }: { token: string; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState({ name: "", code: "", address: "" });
+  const [logoDataUrl, setLogoDataUrl] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+
+  const handleLogoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setLogoDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const resetState = () => {
+    setForm({ name: "", code: "", address: "" });
+    setLogoDataUrl("");
+    if (logoInputRef.current) logoInputRef.current.value = "";
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) resetState();
+  };
 
   const handleSubmit = async () => {
     if (!form.name || !form.code) {
@@ -91,9 +413,28 @@ function AddCollegeDialog({
     }
     setLoading(true);
     try {
-      await backend.createCollege(token, form.name, form.code, form.address);
+      const newCollege = await backend.createCollege(
+        token,
+        form.name,
+        form.code,
+        form.address,
+      );
+      // Upload logo inline if provided
+      if (logoDataUrl) {
+        try {
+          // biome-ignore lint/suspicious/noExplicitAny: uploadCollegeLogo added in backend runtime
+          await (backend as any).uploadCollegeLogo(
+            token,
+            newCollege.id,
+            logoDataUrl,
+          );
+        } catch {
+          // Non-fatal: college created, logo upload failed
+          toast.error("College created but logo upload failed.");
+        }
+      }
       toast.success(`College "${form.name}" created!`);
-      setForm({ name: "", code: "", address: "" });
+      resetState();
       setOpen(false);
       onCreated();
     } catch (err: unknown) {
@@ -106,7 +447,7 @@ function AddCollegeDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm" data-ocid="super.colleges.open_modal_button">
           <Plus className="w-4 h-4 mr-1" /> Add College
@@ -149,11 +490,55 @@ function AddCollegeDialog({
               data-ocid="super.colleges.address.input"
             />
           </div>
+          {/* Inline Logo Upload */}
+          <div className="space-y-2">
+            <Label>College Logo (Optional)</Label>
+            <button
+              type="button"
+              onClick={() => logoInputRef.current?.click()}
+              className="w-20 h-20 rounded-lg border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-primary transition-colors overflow-hidden bg-muted"
+              data-ocid="super.colleges.logo.dropzone"
+            >
+              {logoDataUrl ? (
+                <img
+                  src={logoDataUrl}
+                  alt="Logo preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="flex flex-col items-center gap-1">
+                  <Building2 className="w-6 h-6 text-muted-foreground" />
+                  <span className="text-[10px] text-muted-foreground text-center leading-tight">
+                    Upload Logo
+                  </span>
+                </div>
+              )}
+            </button>
+            <input
+              ref={logoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleLogoSelect}
+            />
+            {logoDataUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setLogoDataUrl("");
+                  if (logoInputRef.current) logoInputRef.current.value = "";
+                }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Remove logo
+              </button>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => setOpen(false)}
+            onClick={() => handleOpenChange(false)}
             data-ocid="super.colleges.cancel_button"
           >
             Cancel
@@ -284,7 +669,35 @@ function AddAdminDialog({
     phone: "",
     collegeId: "",
   });
+  const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
   const [loading, setLoading] = useState(false);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+
+  const handlePhotoSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => setPhotoDataUrl(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const resetState = () => {
+    setForm({
+      name: "",
+      username: "",
+      email: "",
+      password: "",
+      phone: "",
+      collegeId: "",
+    });
+    setPhotoDataUrl("");
+    if (photoInputRef.current) photoInputRef.current.value = "";
+  };
+
+  const handleOpenChange = (isOpen: boolean) => {
+    setOpen(isOpen);
+    if (!isOpen) resetState();
+  };
 
   const handleSubmit = async () => {
     if (!form.name || !form.username || !form.password || !form.collegeId) {
@@ -293,7 +706,7 @@ function AddAdminDialog({
     }
     setLoading(true);
     try {
-      await backend.createUser(
+      const newAdmin = await backend.createUser(
         token,
         form.username,
         form.email,
@@ -303,15 +716,22 @@ function AddAdminDialog({
         form.name,
         form.phone,
       );
+      // Upload photo inline if provided
+      if (photoDataUrl) {
+        try {
+          // biome-ignore lint/suspicious/noExplicitAny: uploadUserPhoto added in backend runtime
+          await (backend as any).uploadUserPhoto(
+            token,
+            newAdmin.id,
+            photoDataUrl,
+          );
+        } catch {
+          // Non-fatal: admin created, photo upload failed
+          toast.error("Admin created but photo upload failed.");
+        }
+      }
       toast.success(`Admin "${form.name}" created!`);
-      setForm({
-        name: "",
-        username: "",
-        email: "",
-        password: "",
-        phone: "",
-        collegeId: "",
-      });
+      resetState();
       setOpen(false);
       onCreated();
     } catch (err: unknown) {
@@ -324,7 +744,7 @@ function AddAdminDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button size="sm" data-ocid="super.admins.open_modal_button">
           <Plus className="w-4 h-4 mr-1" /> Add Admin
@@ -414,11 +834,50 @@ function AddAdminDialog({
               />
             </div>
           </div>
+          {/* Inline Admin Photo Upload */}
+          <div className="space-y-2">
+            <Label>Admin Photo (Optional)</Label>
+            <button
+              type="button"
+              onClick={() => photoInputRef.current?.click()}
+              className="w-20 h-20 rounded-full border-2 border-dashed border-border flex items-center justify-center cursor-pointer hover:border-primary transition-colors overflow-hidden bg-muted"
+              data-ocid="super.admins.photo.dropzone"
+            >
+              {photoDataUrl ? (
+                <img
+                  src={photoDataUrl}
+                  alt="Preview"
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <Camera className="w-6 h-6 text-muted-foreground" />
+              )}
+            </button>
+            <input
+              ref={photoInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handlePhotoSelect}
+            />
+            {photoDataUrl && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPhotoDataUrl("");
+                  if (photoInputRef.current) photoInputRef.current.value = "";
+                }}
+                className="text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Remove photo
+              </button>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button
             variant="outline"
-            onClick={() => setOpen(false)}
+            onClick={() => handleOpenChange(false)}
             data-ocid="super.admins.cancel_button"
           >
             Cancel
@@ -515,8 +974,8 @@ function ResetPasswordDialog({
 // ── Main Dashboard ──────────────────────────────────────────────────────────
 export function SuperAdminDashboard({ section }: { section: string }) {
   const { user } = useAuth();
-  const [colleges, setColleges] = useState<College[]>([]);
-  const [admins, setAdmins] = useState<User[]>([]);
+  const [colleges, setColleges] = useState<CollegeWithLogo[]>([]);
+  const [admins, setAdmins] = useState<UserWithPhoto[]>([]);
   const [loadingColleges, setLoadingColleges] = useState(false);
   const [loadingAdmins, setLoadingAdmins] = useState(false);
 
@@ -526,7 +985,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
     setLoadingColleges(true);
     try {
       const data = await backend.listColleges(token);
-      setColleges(data);
+      setColleges(data as CollegeWithLogo[]);
     } catch {
       toast.error("Failed to load colleges");
     } finally {
@@ -538,7 +997,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
     setLoadingAdmins(true);
     try {
       const data = await backend.listUsers(token, "", UserRole.admin);
-      setAdmins(data);
+      setAdmins(data as UserWithPhoto[]);
     } catch {
       toast.error("Failed to load admins");
     } finally {
@@ -555,7 +1014,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
 
   const activeColleges = colleges.filter((c) => c.status === "active").length;
 
-  const toggleCollegeStatus = async (college: College) => {
+  const toggleCollegeStatus = async (college: CollegeWithLogo) => {
     const newStatus = college.status === "active" ? "suspended" : "active";
     try {
       await backend.updateCollege(
@@ -576,7 +1035,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
     }
   };
 
-  const deleteCollege = async (college: College) => {
+  const deleteCollege = async (college: CollegeWithLogo) => {
     if (
       !window.confirm(
         `Are you sure you want to delete "${college.name}"? This action cannot be undone.`,
@@ -595,7 +1054,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
     }
   };
 
-  const toggleAdminStatus = async (admin: User) => {
+  const toggleAdminStatus = async (admin: UserWithPhoto) => {
     try {
       await backend.updateUser(
         token,
@@ -616,7 +1075,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
     }
   };
 
-  const deleteAdmin = async (admin: User) => {
+  const deleteAdmin = async (admin: UserWithPhoto) => {
     if (
       !window.confirm(
         `Are you sure you want to delete admin "${admin.name}"? This action cannot be undone.`,
@@ -684,6 +1143,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                 <TableHeader>
                   <TableRow>
                     <TableHead>College Name</TableHead>
+                    <TableHead>Logo</TableHead>
                     <TableHead>Code</TableHead>
                     <TableHead>Address</TableHead>
                     <TableHead>Status</TableHead>
@@ -697,6 +1157,20 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                       data-ocid={`super.colleges.row.${i + 1}`}
                     >
                       <TableCell className="font-medium">{c.name}</TableCell>
+                      <TableCell>
+                        {c.logoUrl ? (
+                          <img
+                            src={c.logoUrl}
+                            alt={`${c.name} logo`}
+                            className="w-10 h-10 rounded-lg object-cover border border-border"
+                          />
+                        ) : (
+                          <div className="flex items-center gap-1.5 text-muted-foreground">
+                            <Building2 className="w-4 h-4" />
+                            <span className="text-xs">No logo</span>
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="font-mono text-xs">
                         {c.code}
                       </TableCell>
@@ -715,8 +1189,13 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <EditCollegeDialog
+                            college={c}
+                            token={token}
+                            onUpdated={fetchColleges}
+                          />
+                          <UploadLogoDialog
                             college={c}
                             token={token}
                             onUpdated={fetchColleges}
@@ -804,6 +1283,7 @@ export function SuperAdminDashboard({ section }: { section: string }) {
               <Table data-ocid="super.admins.table">
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-12">Photo</TableHead>
                     <TableHead>Name</TableHead>
                     <TableHead>Username</TableHead>
                     <TableHead>Email</TableHead>
@@ -818,6 +1298,24 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                       key={a.id}
                       data-ocid={`super.admins.row.${i + 1}`}
                     >
+                      <TableCell>
+                        {a.photoUrl ? (
+                          <img
+                            src={a.photoUrl}
+                            alt={a.name}
+                            className="w-9 h-9 rounded-full object-cover border border-border"
+                          />
+                        ) : (
+                          <div className="w-9 h-9 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                            {a.name
+                              .split(" ")
+                              .map((w) => w[0])
+                              .join("")
+                              .slice(0, 2)
+                              .toUpperCase()}
+                          </div>
+                        )}
+                      </TableCell>
                       <TableCell className="font-medium">{a.name}</TableCell>
                       <TableCell className="font-mono text-xs">
                         {a.username}
@@ -840,7 +1338,12 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <div className="flex gap-2">
+                        <div className="flex gap-1.5 flex-wrap">
+                          <UploadUserPhotoDialog
+                            user={a}
+                            token={token}
+                            onUpdated={fetchAdmins}
+                          />
                           <ResetPasswordDialog user={a} token={token} />
                           <Button
                             variant="outline"
@@ -929,11 +1432,24 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                   className="flex items-center justify-between py-2 border-b border-border last:border-0"
                   data-ocid={`super.dashboard.colleges.item.${i + 1}`}
                 >
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {c.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">{c.code}</p>
+                  <div className="flex items-center gap-3">
+                    {c.logoUrl ? (
+                      <img
+                        src={c.logoUrl}
+                        alt={`${c.name} logo`}
+                        className="w-8 h-8 rounded-md object-cover border border-border flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-md bg-muted flex items-center justify-center flex-shrink-0">
+                        <Building2 className="w-4 h-4 text-muted-foreground" />
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {c.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">{c.code}</p>
+                    </div>
                   </div>
                   <Badge
                     className={`border-0 text-xs ${
@@ -971,13 +1487,31 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                   className="flex items-center justify-between py-2 border-b border-border last:border-0"
                   data-ocid={`super.dashboard.admins.item.${i + 1}`}
                 >
-                  <div>
-                    <p className="text-sm font-medium text-foreground">
-                      {a.name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {a.username}
-                    </p>
+                  <div className="flex items-center gap-3">
+                    {a.photoUrl ? (
+                      <img
+                        src={a.photoUrl}
+                        alt={a.name}
+                        className="w-8 h-8 rounded-full object-cover border border-border flex-shrink-0"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground flex-shrink-0">
+                        {a.name
+                          .split(" ")
+                          .map((w) => w[0])
+                          .join("")
+                          .slice(0, 2)
+                          .toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-sm font-medium text-foreground">
+                        {a.name}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {a.username}
+                      </p>
+                    </div>
                   </div>
                   <Badge
                     className={`border-0 text-xs ${
