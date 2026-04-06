@@ -144,6 +144,7 @@ export interface _SERVICE {
     [string, string, string, string, UserRole, string, string, string],
     User
   >,
+  'deleteCollege' : ActorMethod<[string, string], undefined>,
   'deleteUser' : ActorMethod<[string, string], undefined>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole__1>,

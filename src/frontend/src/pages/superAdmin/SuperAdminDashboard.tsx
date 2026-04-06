@@ -25,7 +25,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Building2, Loader2, Plus, RefreshCw, Users } from "lucide-react";
+import {
+  Building2,
+  Loader2,
+  Plus,
+  RefreshCw,
+  Trash2,
+  Users,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -569,6 +576,25 @@ export function SuperAdminDashboard({ section }: { section: string }) {
     }
   };
 
+  const deleteCollege = async (college: College) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete "${college.name}"? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await backend.deleteCollege(token, college.id);
+      setColleges((prev) => prev.filter((c) => c.id !== college.id));
+      toast.success(`College "${college.name}" deleted.`);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete college",
+      );
+    }
+  };
+
   const toggleAdminStatus = async (admin: User) => {
     try {
       await backend.updateUser(
@@ -587,6 +613,25 @@ export function SuperAdminDashboard({ section }: { section: string }) {
       toast.success(`Admin ${!admin.isActive ? "activated" : "deactivated"}`);
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to update");
+    }
+  };
+
+  const deleteAdmin = async (admin: User) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to delete admin "${admin.name}"? This action cannot be undone.`,
+      )
+    ) {
+      return;
+    }
+    try {
+      await backend.deleteUser(token, admin.id);
+      setAdmins((prev) => prev.filter((a) => a.id !== admin.id));
+      toast.success(`Admin "${admin.name}" deleted.`);
+    } catch (err: unknown) {
+      toast.error(
+        err instanceof Error ? err.message : "Failed to delete admin",
+      );
     }
   };
 
@@ -683,6 +728,14 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                             data-ocid={`super.colleges.toggle.${i + 1}`}
                           >
                             {c.status === "active" ? "Suspend" : "Activate"}
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteCollege(c)}
+                            data-ocid={`super.colleges.delete_button.${i + 1}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>
@@ -796,6 +849,14 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                             data-ocid={`super.admins.toggle.${i + 1}`}
                           >
                             {a.isActive ? "Deactivate" : "Activate"}
+                          </Button>
+                          <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={() => deleteAdmin(a)}
+                            data-ocid={`super.admins.delete_button.${i + 1}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
                       </TableCell>

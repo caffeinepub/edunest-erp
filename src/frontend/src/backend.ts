@@ -193,6 +193,7 @@ export interface backendInterface {
     createCollege(token: string, name: string, code: string, address: string): Promise<College>;
     createNotice(token: string, collegeId: string, title: string, content: string, targetRole: string): Promise<Notice>;
     createUser(token: string, username: string, email: string, password: string, role: UserRole, collegeId: string, name: string, phone: string): Promise<User>;
+    deleteCollege(token: string, collegeId: string): Promise<void>;
     deleteUser(token: string, userId: string): Promise<void>;
     getCallerUserProfile(): Promise<UserProfile | null>;
     getCallerUserRole(): Promise<UserRole__1>;
@@ -335,6 +336,20 @@ export class Backend implements backendInterface {
         } else {
             const result = await this.actor.createUser(arg0, arg1, arg2, arg3, to_candid_UserRole_n3(this._uploadFile, this._downloadFile, arg4), arg5, arg6, arg7);
             return from_candid_User_n5(this._uploadFile, this._downloadFile, result);
+        }
+    }
+    async deleteCollege(arg0: string, arg1: string): Promise<void> {
+        if (this.processError) {
+            try {
+                const result = await (this.actor as any).deleteCollege(arg0, arg1);
+                return result;
+            } catch (e) {
+                this.processError(e);
+                throw new Error("unreachable");
+            }
+        } else {
+            const result = await (this.actor as any).deleteCollege(arg0, arg1);
+            return result;
         }
     }
     async deleteUser(arg0: string, arg1: string): Promise<void> {

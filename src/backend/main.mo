@@ -116,17 +116,17 @@ actor {
   };
 
   // State storage
-  var colleges = Map.empty<Text, College>();
-  var users = Map.empty<Text, User>();
-  var sessions = Map.empty<Text, Session>();
-  var studentRecords = Map.empty<Text, StudentRecord>();
-  var teacherRecords = Map.empty<Text, TeacherRecord>();
-  var notices = Map.empty<Text, Notice>();
-  var feeRecords = Map.empty<Text, FeeRecord>();
-  var userProfiles = Map.empty<Principal, UserProfile>();
+  stable var colleges = Map.empty<Text, College>();
+  stable var users = Map.empty<Text, User>();
+  stable var sessions = Map.empty<Text, Session>();
+  stable var studentRecords = Map.empty<Text, StudentRecord>();
+  stable var teacherRecords = Map.empty<Text, TeacherRecord>();
+  stable var notices = Map.empty<Text, Notice>();
+  stable var feeRecords = Map.empty<Text, FeeRecord>();
+  stable var userProfiles = Map.empty<Principal, UserProfile>();
 
-  var nextId : Nat = 0;
-  var bootstrapped : Bool = false;
+  stable var nextId : Nat = 0;
+  stable var bootstrapped : Bool = false;
 
   // Helper functions
   func generateId() : Text {
@@ -355,6 +355,13 @@ actor {
         updated;
       };
     };
+  };
+
+
+  public func deleteCollege(token : Text, collegeId : Text) : async () {
+    let session = requireSession(token);
+    requireSuperAdmin(session);
+    colleges.remove(collegeId);
   };
 
   // User Management
