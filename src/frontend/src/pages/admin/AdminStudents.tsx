@@ -20,32 +20,30 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Camera,
+  CheckCircle,
+  Download,
+  FileText,
   GraduationCap,
   ImageIcon,
   Loader2,
   Plus,
   RefreshCw,
   Search,
+  Upload,
   UserPlus,
+  XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { StudentRecord, User } from "../../backend";
 import { UserRole } from "../../backend";
 import { backendAPI as backend } from "../../backendAPI";
+import { parseCSV } from "../../utils/csvParser";
 
 const CARD = "bg-card rounded-2xl border border-border shadow-card p-5";
 const INPUT =
   "w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all";
 const LABEL = "block text-xs font-medium text-muted-foreground mb-1.5";
-
-const DEPARTMENTS = [
-  "CSE",
-  "AI & ML",
-  "Civil Engineering",
-  "Mechanical Engineering",
-];
-const COURSES = ["BTech", "Diploma", "BCA", "MCA", "MTech"];
 
 // ── Upload Student Photo Dialog ────────────────────────────────────────────────
 function UploadStudentPhotoDialog({
@@ -334,11 +332,28 @@ function AllStudentsTab({
 }
 
 // ── Add Student Dialog ────────────────────────────────────────────────────────────
+interface DeptItem {
+  id: string;
+  name: string;
+}
+interface CourseItem {
+  id: string;
+  name: string;
+}
+
 function AddStudentTab({
   collegeId,
   token,
   onCreated,
-}: { collegeId: string; token: string; onCreated: () => void }) {
+  departments = [],
+  courses = [],
+}: {
+  collegeId: string;
+  token: string;
+  onCreated: () => void;
+  departments?: DeptItem[];
+  courses?: CourseItem[];
+}) {
   const [photoDataUrl, setPhotoDataUrl] = useState<string>("");
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [form, setForm] = useState({
@@ -347,9 +362,9 @@ function AddStudentTab({
     email: "",
     password: "",
     phone: "",
-    department: "CSE",
+    department: "",
     year: "1st Year",
-    course: "BTech",
+    course: "",
     section: "A",
     rollNumber: "",
     admissionYear: String(new Date().getFullYear()),
@@ -436,9 +451,9 @@ function AddStudentTab({
         email: "",
         password: "",
         phone: "",
-        department: "CSE",
+        department: "",
         year: "1st Year",
-        course: "BTech",
+        course: "",
         section: "A",
         rollNumber: "",
         admissionYear: String(new Date().getFullYear()),
@@ -535,9 +550,15 @@ function AddStudentTab({
             onChange={(e) => set("department", e.target.value)}
             data-ocid="admin.add_student.department.select"
           >
-            {DEPARTMENTS.map((d) => (
-              <option key={d}>{d}</option>
-            ))}
+            {departments.length === 0 ? (
+              <option value="">No departments added yet</option>
+            ) : (
+              departments.map((d) => (
+                <option key={d.id} value={d.name}>
+                  {d.name}
+                </option>
+              ))
+            )}
           </select>
         </div>
         <div>
@@ -548,9 +569,15 @@ function AddStudentTab({
             onChange={(e) => set("course", e.target.value)}
             data-ocid="admin.add_student.course.select"
           >
-            {COURSES.map((c) => (
-              <option key={c}>{c}</option>
-            ))}
+            {courses.length === 0 ? (
+              <option value="">No courses added yet</option>
+            ) : (
+              courses.map((c) => (
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
+              ))
+            )}
           </select>
         </div>
         <div>
@@ -752,6 +779,311 @@ function AddStudentTab({
   );
 }
 
+// ── CSV Import Result types ──────────────────────────────────────────────────
+interface ImportResult {
+  success: number;
+  failures: { row: number; name: string; error: string }[];
+}
+
+// ── CSV Import Tab ────────────────────────────────────────────────────────────
+function CsvImportTab({
+  collegeId,
+  token,
+  onImported,
+}: { collegeId: string; token: string; onImported: () => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string>("");
+  const [csvText, setCsvText] = useState<string>("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<ImportResult | null>(null);
+
+  const downloadTemplate = () => {
+    const content =
+      "name,rollNumber,mobile,department,year,course,section,gender\nJohn Doe,CSE/2024/001,9876543210,CSE,1st Year,BTech,A,Male\nJane Smith,CSE/2024/002,9876543211,AI & ML,2nd Year,BTech,B,Female";
+    const blob = new Blob([content], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "student-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setResult(null);
+    const reader = new FileReader();
+    reader.onload = (evt) => setCsvText(evt.target?.result as string);
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!csvText) {
+      toast.error("Please select a CSV file first.");
+      return;
+    }
+
+    const rows = parseCSV(csvText);
+    if (rows.length === 0) {
+      toast.error("CSV file is empty or has no data rows.");
+      return;
+    }
+
+    // Validate required columns
+    const required = [
+      "name",
+      "rollnumber",
+      "mobile",
+      "department",
+      "year",
+      "course",
+      "section",
+      "gender",
+    ];
+    const firstRow = rows[0];
+    const missing = required.filter((col) => !(col in firstRow));
+    if (missing.length > 0) {
+      toast.error(
+        `Missing columns: ${missing.join(", ")}. Check your CSV headers.`,
+      );
+      return;
+    }
+
+    setImporting(true);
+    const res: ImportResult = { success: 0, failures: [] };
+    const admissionYear = String(new Date().getFullYear());
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const name = row.name?.trim();
+      const rollNumber = row.rollnumber?.trim();
+      const mobile = row.mobile?.trim();
+      const department = row.department?.trim() || "CSE";
+      const year = row.year?.trim() || "1st Year";
+      const course = row.course?.trim() || "BTech";
+      const section = row.section?.trim() || "A";
+      const gender = row.gender?.trim() || "Male";
+
+      if (!name || !rollNumber) {
+        res.failures.push({
+          row: i + 2,
+          name: name || `Row ${i + 2}`,
+          error: "Name and roll number are required",
+        });
+        continue;
+      }
+
+      try {
+        // password = rollNumber (as specified)
+        const newUser = await backend.createUser(
+          token,
+          rollNumber,
+          "",
+          rollNumber,
+          UserRole.student,
+          collegeId,
+          name,
+          mobile || "",
+        );
+        await backend.addStudentRecord(
+          token,
+          collegeId,
+          newUser.id,
+          department,
+          year,
+          course,
+          section,
+          rollNumber,
+          admissionYear,
+          "",
+          "",
+          "",
+          "",
+          "",
+          gender,
+          BigInt(0),
+          BigInt(0),
+          BigInt(0),
+        );
+        res.success++;
+      } catch (err: unknown) {
+        res.failures.push({
+          row: i + 2,
+          name,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+
+    setResult(res);
+    setImporting(false);
+
+    if (res.success > 0) {
+      toast.success(`${res.success} student(s) imported successfully!`);
+      onImported();
+    }
+    if (res.failures.length > 0) {
+      toast.error(`${res.failures.length} row(s) failed. See details below.`);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      {/* Template download */}
+      <div className={CARD}>
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+            <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-foreground text-sm">
+              Step 1: Download Template
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1 mb-3">
+              Download the sample CSV template with the correct column format:
+              <span className="font-mono text-xs ml-1 text-primary">
+                name, rollNumber, mobile, department, year, course, section,
+                gender
+              </span>
+            </p>
+            <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground mb-3">
+              name,rollNumber,mobile,department,year,course,section,gender
+              <br />
+              John Doe,CSE/2024/001,9876543210,CSE,1st Year,BTech,A,Male
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              <strong>Note:</strong> Default password for each student will be
+              their roll number.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadTemplate}
+              data-ocid="admin.csv_import.download_template.button"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download student-template.csv
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* File upload */}
+      <div className={CARD}>
+        <h3 className="font-semibold text-foreground text-sm mb-3">
+          Step 2: Upload Your CSV File
+        </h3>
+        <button
+          type="button"
+          className="w-full border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-all"
+          onClick={() => fileInputRef.current?.click()}
+          data-ocid="admin.csv_import.dropzone"
+        >
+          <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+          {fileName ? (
+            <>
+              <p className="font-medium text-foreground text-sm">{fileName}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Click to choose a different file
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-foreground text-sm">
+                Click to upload CSV file
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Only .csv files are accepted
+              </p>
+            </>
+          )}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={handleFileChange}
+          data-ocid="admin.csv_import.upload_button"
+        />
+
+        <Button
+          onClick={handleImport}
+          disabled={importing || !csvText}
+          className="mt-4 w-full"
+          data-ocid="admin.csv_import.import.button"
+        >
+          {importing ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Importing students...
+            </>
+          ) : (
+            <>
+              <Upload className="w-4 h-4 mr-2" />
+              Import Students from CSV
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-3" data-ocid="admin.csv_import.success_state">
+          {result.success > 0 && (
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-green-700 dark:text-green-300 text-sm">
+                  {result.success} student{result.success !== 1 ? "s" : ""}{" "}
+                  imported successfully
+                </p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                  Default password set to each student's roll number.
+                </p>
+              </div>
+            </div>
+          )}
+          {result.failures.length > 0 && (
+            <div
+              className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl"
+              data-ocid="admin.csv_import.error_state"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <p className="font-semibold text-red-700 dark:text-red-300 text-sm">
+                  {result.failures.length} row
+                  {result.failures.length !== 1 ? "s" : ""} failed to import
+                </p>
+              </div>
+              <div className="space-y-2">
+                {result.failures.map((f) => (
+                  <div
+                    key={`${f.row}-${f.name}`}
+                    className="flex items-start gap-2 text-xs"
+                  >
+                    <span className="font-mono text-red-500 dark:text-red-400 w-12 flex-shrink-0">
+                      Row {f.row}
+                    </span>
+                    <span className="font-medium text-red-700 dark:text-red-300 w-32 flex-shrink-0 truncate">
+                      {f.name}
+                    </span>
+                    <span className="text-red-600 dark:text-red-400">
+                      {f.error}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export function AdminStudents({
   collegeId,
@@ -759,18 +1091,30 @@ export function AdminStudents({
 }: { collegeId: string; token: string }) {
   const [students, setStudents] = useState<User[]>([]);
   const [studentRecords, setStudentRecords] = useState<StudentRecord[]>([]);
+  const [departments, setDepartments] = useState<DeptItem[]>([]);
+  const [courses, setCourses] = useState<CourseItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchData = useCallback(async () => {
     if (!token || !collegeId) return;
     setLoading(true);
     try {
-      const [studs, recs] = await Promise.all([
+      const [studs, recs, depts, crses] = await Promise.all([
         backend.listUsers(token, collegeId, UserRole.student),
         backend.listStudentRecords(token, collegeId),
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic method
+        (backend as any)
+          .listDepartments(token, collegeId)
+          .catch(() => []),
+        // biome-ignore lint/suspicious/noExplicitAny: dynamic method
+        (backend as any)
+          .listCourses(token, collegeId)
+          .catch(() => []),
       ]);
       setStudents(studs);
       setStudentRecords(recs);
+      setDepartments(depts);
+      setCourses(crses);
     } catch {
       toast.error("Failed to load students");
     } finally {
@@ -819,6 +1163,10 @@ export function AdminStudents({
           <TabsTrigger value="add" data-ocid="admin.students.add.tab">
             Add Student
           </TabsTrigger>
+          <TabsTrigger value="csv" data-ocid="admin.students.csv.tab">
+            <Upload className="w-3.5 h-3.5 mr-1.5" />
+            CSV Import
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="all">
@@ -831,10 +1179,26 @@ export function AdminStudents({
           />
         </TabsContent>
         <TabsContent value="add">
+          {departments.length === 0 && (
+            <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl text-sm text-amber-700 dark:text-amber-300">
+              ⚠️ Please add departments first from the{" "}
+              <strong>Departments &amp; Courses</strong> section before adding
+              students.
+            </div>
+          )}
           <AddStudentTab
             collegeId={collegeId}
             token={token}
             onCreated={fetchData}
+            departments={departments}
+            courses={courses}
+          />
+        </TabsContent>
+        <TabsContent value="csv">
+          <CsvImportTab
+            collegeId={collegeId}
+            token={token}
+            onImported={fetchData}
           />
         </TabsContent>
       </Tabs>

@@ -1,10 +1,28 @@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import {
   Bell,
   DollarSign,
   GraduationCap,
   Loader2,
+  Plus,
   RefreshCw,
   Users,
 } from "lucide-react";
@@ -47,6 +65,138 @@ function StatCard({
         </p>
       </div>
     </motion.div>
+  );
+}
+
+function EmptyState({
+  icon: Icon,
+  title,
+  subtitle,
+  ocid,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  subtitle?: string;
+  ocid?: string;
+}) {
+  return (
+    <div className="text-center py-10" data-ocid={ocid}>
+      <div className="w-12 h-12 rounded-2xl bg-muted flex items-center justify-center mx-auto mb-3">
+        <Icon className="w-6 h-6 text-muted-foreground" />
+      </div>
+      <p className="font-semibold text-foreground text-sm">{title}</p>
+      {subtitle && (
+        <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+      )}
+    </div>
+  );
+}
+
+// ── Post Notice Dialog ──
+function PostNoticeDialog({
+  token,
+  collegeId,
+  onPosted,
+}: { token: string; collegeId: string; onPosted: () => void }) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [targetRole, setTargetRole] = useState("all");
+  const [posting, setPosting] = useState(false);
+
+  const handlePost = async () => {
+    if (!title.trim() || !content.trim()) {
+      toast.error("Title and content are required.");
+      return;
+    }
+    setPosting(true);
+    try {
+      await backend.createNotice(
+        token,
+        collegeId,
+        title.trim(),
+        content.trim(),
+        targetRole,
+      );
+      toast.success("Notice posted successfully!");
+      setTitle("");
+      setContent("");
+      setTargetRole("all");
+      setOpen(false);
+      onPosted();
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to post notice");
+    } finally {
+      setPosting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" data-ocid="principal.notices.open_modal_button">
+          <Plus className="w-4 h-4 mr-1.5" /> Post Notice
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-ocid="principal.notices.dialog">
+        <DialogHeader>
+          <DialogTitle>Post a Notice</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label>Title *</Label>
+            <input
+              className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
+              placeholder="Notice title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              data-ocid="principal.notices.title.input"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Content *</Label>
+            <Textarea
+              placeholder="Notice content…"
+              className="min-h-[120px]"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              data-ocid="principal.notices.content.textarea"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Target Audience</Label>
+            <Select value={targetRole} onValueChange={setTargetRole}>
+              <SelectTrigger data-ocid="principal.notices.target.select">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All</SelectItem>
+                <SelectItem value="student">Students</SelectItem>
+                <SelectItem value="teacher">Teachers</SelectItem>
+                <SelectItem value="feeManager">Fee Managers</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => setOpen(false)}
+            data-ocid="principal.notices.cancel_button"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handlePost}
+            disabled={posting}
+            data-ocid="principal.notices.submit_button"
+          >
+            {posting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Post Notice
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -99,13 +249,12 @@ export function PrincipalDashboard({ section }: { section: string }) {
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : students.length === 0 ? (
-            <div
-              className="text-center py-10"
-              data-ocid="principal.students.empty_state"
-            >
-              <GraduationCap className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No students yet.</p>
-            </div>
+            <EmptyState
+              icon={GraduationCap}
+              title="No students yet"
+              subtitle="Students will appear here once enrolled."
+              ocid="principal.students.empty_state"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -168,13 +317,12 @@ export function PrincipalDashboard({ section }: { section: string }) {
               <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
             </div>
           ) : teachers.length === 0 ? (
-            <div
-              className="text-center py-10"
-              data-ocid="principal.teachers.empty_state"
-            >
-              <Users className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No teachers yet.</p>
-            </div>
+            <EmptyState
+              icon={Users}
+              title="No teachers yet"
+              subtitle="Teachers will appear here once added."
+              ocid="principal.teachers.empty_state"
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -230,7 +378,14 @@ export function PrincipalDashboard({ section }: { section: string }) {
   if (section === "notices") {
     return (
       <div className="p-6 space-y-5">
-        <h2 className="text-xl font-bold text-foreground">Notice Board</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-bold text-foreground">Notice Board</h2>
+          <PostNoticeDialog
+            token={token}
+            collegeId={collegeId}
+            onPosted={fetchData}
+          />
+        </div>
         <div className={CARD}>
           {loading ? (
             <div
@@ -240,13 +395,12 @@ export function PrincipalDashboard({ section }: { section: string }) {
               <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
             </div>
           ) : notices.length === 0 ? (
-            <div
-              className="text-center py-8"
-              data-ocid="principal.notices.empty_state"
-            >
-              <Bell className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-              <p className="text-sm text-muted-foreground">No notices yet.</p>
-            </div>
+            <EmptyState
+              icon={Bell}
+              title="No notices yet"
+              subtitle="Post a notice to inform students and staff."
+              ocid="principal.notices.empty_state"
+            />
           ) : (
             <div className="space-y-3">
               {notices.map((n, i) => (
@@ -296,14 +450,11 @@ export function PrincipalDashboard({ section }: { section: string }) {
         </div>
         <div className={CARD}>
           {feeRecords.length === 0 ? (
-            <div
-              className="text-center py-6"
-              data-ocid="principal.fees.empty_state"
-            >
-              <p className="text-sm text-muted-foreground">
-                No fee records yet.
-              </p>
-            </div>
+            <EmptyState
+              icon={DollarSign}
+              title="No fee records yet"
+              ocid="principal.fees.empty_state"
+            />
           ) : (
             <div className="space-y-3">
               {feeRecords.slice(0, 10).map((f, i) => (
@@ -409,14 +560,20 @@ export function PrincipalDashboard({ section }: { section: string }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className={CARD}>
-          <h3 className="font-semibold text-foreground mb-4">Recent Notices</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-foreground">Recent Notices</h3>
+            <PostNoticeDialog
+              token={token}
+              collegeId={collegeId}
+              onPosted={fetchData}
+            />
+          </div>
           {notices.length === 0 ? (
-            <div
-              className="text-center py-6"
-              data-ocid="principal.dashboard.notices.empty_state"
-            >
-              <p className="text-sm text-muted-foreground">No notices yet.</p>
-            </div>
+            <EmptyState
+              icon={Bell}
+              title="No notices yet"
+              ocid="principal.dashboard.notices.empty_state"
+            />
           ) : (
             <div className="space-y-3">
               {notices.slice(0, 4).map((n, i) => (
@@ -442,14 +599,11 @@ export function PrincipalDashboard({ section }: { section: string }) {
             Recent Fee Records
           </h3>
           {feeRecords.length === 0 ? (
-            <div
-              className="text-center py-6"
-              data-ocid="principal.dashboard.fees.empty_state"
-            >
-              <p className="text-sm text-muted-foreground">
-                No fee records yet.
-              </p>
-            </div>
+            <EmptyState
+              icon={DollarSign}
+              title="No fee records yet"
+              ocid="principal.dashboard.fees.empty_state"
+            />
           ) : (
             <div className="space-y-3">
               {feeRecords.slice(0, 4).map((f, i) => (

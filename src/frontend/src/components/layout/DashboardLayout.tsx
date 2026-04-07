@@ -35,7 +35,8 @@ export function DashboardLayout({
           {children(activeSection)}
         </main>
         <footer className="border-t border-border py-3 px-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()}. Made by Vikas Sirvi
+          © {new Date().getFullYear()}. Made by Vikas Sirvi | Powered by Motoko
+          on the Internet Computer
         </footer>
       </div>
     </div>

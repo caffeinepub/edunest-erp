@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +41,9 @@ import {
   Bell,
   BookOpen,
   Camera,
+  CheckCircle,
+  Download,
+  FileText,
   GraduationCap,
   ImageIcon,
   Loader2,
@@ -38,7 +52,9 @@ import {
   RefreshCw,
   Shield,
   Trash2,
+  Upload,
   Users,
+  XCircle,
 } from "lucide-react";
 import { motion } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -47,6 +63,7 @@ import type { College, Notice, User } from "../../backend";
 import { UserRole } from "../../backend";
 import { backendAPI as backend } from "../../backendAPI";
 import { useAuth } from "../../contexts/AuthContext";
+import { parseCSV } from "../../utils/csvParser";
 import { AdminStudents } from "./AdminStudents";
 
 // Extended user type with optional photoUrl (backend runtime supports it)
@@ -1037,12 +1054,6 @@ function DepartmentsSection({
   };
 
   const handleDeleteDept = async (dept: Department) => {
-    if (
-      !window.confirm(
-        `Delete department "${dept.name}"? This cannot be undone.`,
-      )
-    )
-      return;
     try {
       // biome-ignore lint/suspicious/noExplicitAny: deleteDepartment added in backend runtime
       await (backend as any).deleteDepartment(token, dept.id);
@@ -1134,10 +1145,6 @@ function DepartmentsSection({
   };
 
   const handleDeleteCourse = async (course: Course) => {
-    if (
-      !window.confirm(`Delete course "${course.name}"? This cannot be undone.`)
-    )
-      return;
     try {
       // biome-ignore lint/suspicious/noExplicitAny: deleteCourse added in backend runtime
       await (backend as any).deleteCourse(token, course.id);
@@ -1313,15 +1320,42 @@ function DepartmentsSection({
                             >
                               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteDept(dept)}
-                              data-ocid={`admin.departments.delete_button.${i + 1}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  data-ocid={`admin.departments.delete_button.${i + 1}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Are you sure?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This action cannot be undone.{" "}
+                                    <strong>{dept.name}</strong> will be
+                                    permanently deleted.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel data-ocid="admin.departments.delete.cancel_button">
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteDept(dept)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    data-ocid="admin.departments.delete.confirm_button"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1593,15 +1627,42 @@ function DepartmentsSection({
                             >
                               <Pencil className="w-3.5 h-3.5 mr-1" /> Edit
                             </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                              onClick={() => handleDeleteCourse(course)}
-                              data-ocid={`admin.courses.delete_button.${i + 1}`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                                  data-ocid={`admin.courses.delete_button.${i + 1}`}
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 mr-1" /> Delete
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Are you sure?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This action cannot be undone.{" "}
+                                    <strong>{course.name}</strong> will be
+                                    permanently deleted.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel data-ocid="admin.courses.delete.cancel_button">
+                                    Cancel
+                                  </AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteCourse(course)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    data-ocid="admin.courses.delete.confirm_button"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1705,6 +1766,287 @@ function DepartmentsSection({
 }
 
 // ── Main Dashboard ──────────────────────────────────────────────────────────
+
+// ── Teacher CSV Import Tab ────────────────────────────────────────────────────
+interface TeacherImportResult {
+  success: number;
+  failures: { row: number; name: string; error: string }[];
+}
+
+function TeacherCsvImportTab({
+  collegeId,
+  token,
+  onImported,
+}: { collegeId: string; token: string; onImported: () => void }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [fileName, setFileName] = useState<string>("");
+  const [csvText, setCsvText] = useState<string>("");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<TeacherImportResult | null>(null);
+
+  const downloadTemplate = () => {
+    const content =
+      "name,email,subject,department,mobile\nJane Smith,jane@college.edu,Mathematics,CSE,9876543210\nRaj Kumar,raj@college.edu,Physics,AI & ML,9876543211";
+    const blob = new Blob([content], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "teacher-template.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    setResult(null);
+    const reader = new FileReader();
+    reader.onload = (evt) => setCsvText(evt.target?.result as string);
+    reader.readAsText(file);
+  };
+
+  const handleImport = async () => {
+    if (!csvText) {
+      toast.error("Please select a CSV file first.");
+      return;
+    }
+
+    const rows = parseCSV(csvText);
+    if (rows.length === 0) {
+      toast.error("CSV file is empty or has no data rows.");
+      return;
+    }
+
+    const required = ["name", "email", "subject", "department", "mobile"];
+    const firstRow = rows[0];
+    const missing = required.filter((col) => !(col in firstRow));
+    if (missing.length > 0) {
+      toast.error(
+        `Missing columns: ${missing.join(", ")}. Check your CSV headers.`,
+      );
+      return;
+    }
+
+    setImporting(true);
+    const res: TeacherImportResult = { success: 0, failures: [] };
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const name = row.name?.trim();
+      const email = row.email?.trim() || "";
+      const subject = row.subject?.trim() || "";
+      const department = row.department?.trim() || "CSE";
+      const mobile = row.mobile?.trim() || "";
+
+      if (!name || !mobile) {
+        res.failures.push({
+          row: i + 2,
+          name: name || `Row ${i + 2}`,
+          error: "Name and mobile are required",
+        });
+        continue;
+      }
+
+      try {
+        // password = mobile (as specified)
+        const newUser = await backend.createUser(
+          token,
+          mobile,
+          email,
+          mobile,
+          UserRole.teacher,
+          collegeId,
+          name,
+          mobile,
+        );
+        await backend.addTeacherRecord(
+          token,
+          collegeId,
+          newUser.id,
+          department,
+          "Lecturer",
+          subject,
+          "",
+        );
+        res.success++;
+      } catch (err: unknown) {
+        res.failures.push({
+          row: i + 2,
+          name,
+          error: err instanceof Error ? err.message : "Unknown error",
+        });
+      }
+    }
+
+    setResult(res);
+    setImporting(false);
+
+    if (res.success > 0) {
+      toast.success(`${res.success} teacher(s) imported successfully!`);
+      onImported();
+    }
+    if (res.failures.length > 0) {
+      toast.error(`${res.failures.length} row(s) failed. See details below.`);
+    }
+  };
+
+  const CARD_LOCAL = "bg-card rounded-2xl border border-border shadow-card p-5";
+
+  return (
+    <div className="space-y-5 mt-5">
+      {/* Template download */}
+      <div className={CARD_LOCAL}>
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center flex-shrink-0">
+            <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="flex-1">
+            <h3 className="font-semibold text-foreground text-sm">
+              Step 1: Download Template
+            </h3>
+            <p className="text-xs text-muted-foreground mt-1 mb-3">
+              Download the sample CSV template with the correct column format:
+              <span className="font-mono text-xs ml-1 text-primary">
+                name, email, subject, department, mobile
+              </span>
+            </p>
+            <div className="p-3 bg-muted/50 rounded-lg font-mono text-xs text-muted-foreground mb-3">
+              name,email,subject,department,mobile
+              <br />
+              Jane Smith,jane@college.edu,Mathematics,CSE,9876543210
+            </div>
+            <p className="text-xs text-muted-foreground mb-3">
+              <strong>Note:</strong> Default password for each teacher will be
+              their mobile number.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={downloadTemplate}
+              data-ocid="admin.teacher_csv.download_template.button"
+            >
+              <Download className="w-4 h-4 mr-2" />
+              Download teacher-template.csv
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* File upload */}
+      <div className={CARD_LOCAL}>
+        <h3 className="font-semibold text-foreground text-sm mb-3">
+          Step 2: Upload Your CSV File
+        </h3>
+        <button
+          type="button"
+          className="w-full border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-primary/50 hover:bg-muted/30 transition-all"
+          onClick={() => fileInputRef.current?.click()}
+          data-ocid="admin.teacher_csv.dropzone"
+        >
+          <Upload className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+          {fileName ? (
+            <>
+              <p className="font-medium text-foreground text-sm">{fileName}</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Click to choose a different file
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="font-medium text-foreground text-sm">
+                Click to upload CSV file
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                Only .csv files are accepted
+              </p>
+            </>
+          )}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".csv"
+          className="hidden"
+          onChange={handleFileChange}
+          data-ocid="admin.teacher_csv.upload_button"
+        />
+
+        <Button
+          onClick={handleImport}
+          disabled={importing || !csvText}
+          className="mt-4 w-full"
+          data-ocid="admin.teacher_csv.import.button"
+        >
+          {importing ? (
+            <>
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              Importing teachers...
+            </>
+          ) : (
+            <>
+              <Upload className="w-4 h-4 mr-2" />
+              Import Teachers from CSV
+            </>
+          )}
+        </Button>
+      </div>
+
+      {/* Results */}
+      {result && (
+        <div className="space-y-3" data-ocid="admin.teacher_csv.success_state">
+          {result.success > 0 && (
+            <div className="p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-start gap-3">
+              <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-green-700 dark:text-green-300 text-sm">
+                  {result.success} teacher{result.success !== 1 ? "s" : ""}{" "}
+                  imported successfully
+                </p>
+                <p className="text-xs text-green-600 dark:text-green-400 mt-0.5">
+                  Default password set to each teacher's mobile number.
+                </p>
+              </div>
+            </div>
+          )}
+          {result.failures.length > 0 && (
+            <div
+              className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl"
+              data-ocid="admin.teacher_csv.error_state"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="w-5 h-5 text-red-600 dark:text-red-400" />
+                <p className="font-semibold text-red-700 dark:text-red-300 text-sm">
+                  {result.failures.length} row
+                  {result.failures.length !== 1 ? "s" : ""} failed to import
+                </p>
+              </div>
+              <div className="space-y-2">
+                {result.failures.map((f) => (
+                  <div
+                    key={`${f.row}-${f.name}`}
+                    className="flex items-start gap-2 text-xs"
+                  >
+                    <span className="font-mono text-red-500 dark:text-red-400 w-12 flex-shrink-0">
+                      Row {f.row}
+                    </span>
+                    <span className="font-medium text-red-700 dark:text-red-300 w-32 flex-shrink-0 truncate">
+                      {f.name}
+                    </span>
+                    <span className="text-red-600 dark:text-red-400">
+                      {f.error}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AdminDashboard({ section }: { section: string }) {
   const { user } = useAuth();
   const token = user?.token ?? "";
@@ -1788,6 +2130,13 @@ export function AdminDashboard({ section }: { section: string }) {
             >
               Principals
             </TabsTrigger>
+            <TabsTrigger
+              value="teacherCsv"
+              data-ocid="admin.users.teacher_csv.tab"
+            >
+              <Upload className="w-3.5 h-3.5 mr-1.5" />
+              CSV Import
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="teachers" className="mt-5">
             <RoleUsersTab
@@ -1808,6 +2157,13 @@ export function AdminDashboard({ section }: { section: string }) {
               role={UserRole.principal}
               collegeId={collegeId}
               token={token}
+            />
+          </TabsContent>
+          <TabsContent value="teacherCsv">
+            <TeacherCsvImportTab
+              collegeId={collegeId}
+              token={token}
+              onImported={() => {}}
             />
           </TabsContent>
         </Tabs>

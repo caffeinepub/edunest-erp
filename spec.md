@@ -1,43 +1,63 @@
-# EduNest ERP — Photo Uploads & Avatar Display
+# EduNest ERP — UX Simplification & All-Clickable Dashboard Fix
 
 ## Current State
 
-- `College.logoUrl` (Text) and `User.photoUrl` (Text) fields exist in Motoko stable storage and store base64 data URLs.
-- `uploadCollegeLogo(token, collegeId, logoDataUrl)` and `uploadUserPhoto(token, userId, photoDataUrl)` backend functions are fully implemented.
-- `login()` returns `photoUrl` in its response; `AuthContext` stores it in the `AuthUser` object and localStorage.
-- SuperAdminDashboard: College logo upload exists as a separate button per row (UploadLogoDialog). Admin photo upload also exists as a separate button per row (UploadUserPhotoDialog). Both are post-creation, not inline in the Add forms.
-- AdminDashboard (RoleUsersTab): Photo upload exists per row for Teacher, FeeManager, Principal via UploadUserPhotoDialog. NO photo upload for Students anywhere in AdminStudents.tsx.
-- Navbar: Shows user photo avatar (or initials fallback) in the top-right profile button and dropdown — already implemented.
-- Sidebar: Shows ONLY initials in the bottom user info area — no photo rendering at all.
+The app has 6 role-based dashboards (Super Admin, Admin, Student, Teacher, Fee Manager, Principal). The core backend is fully functional (login, colleges, users, students, departments, courses, fees, notices). However:
+
+- **Many sidebar nav items are stubs** — attendance, assignments, exams, documents, notes click but show nothing (silently fall through to the default dashboard view)
+- **Hardcoded department/course lists** in AdminStudents.tsx — don't use the college's actual departments/courses
+- **UI is complex and dense** — forms have too many required fields, tables have too many columns, information hierarchy is poor
+- **window.confirm() used** for deletions — not accessible
+- **Missing footer/tag copy** from spec in some places
+- **Notifications bell** is a UI stub — shows nothing
+- **Teacher notice** target role is hardcoded to "student"
+- **Principal has no actions** — purely read-only with no management capability
+- **Student sections** (attendance, assignments, exams, documents) show the default dashboard instead of a proper UI
 
 ## Requested Changes (Diff)
 
 ### Add
-- Photo upload field in the Add College form (Super Admin) — inline logo upload when creating a college.
-- Photo upload field in the Add Admin form (Super Admin) — inline photo upload when creating an admin.
-- Photo upload field in Add Student form (Admin) — inline photo upload when adding a student.
-- Photo upload field in Add Teacher form (Admin) — inline photo upload when adding a teacher.
-- Photo upload field in Add Fee Manager form (Admin) — inline photo upload when adding a fee manager.
-- Photo column + upload button in the All Students table (AdminStudents.tsx) — students list was missing photo display entirely.
-- User photo avatar in the Sidebar bottom user info section (replaces initials-only circle).
+- **Student Dashboard**: Working sections for Attendance (view own attendance summary), Assignments (view assignments posted by teachers), Exams (view exam schedule), Documents (view uploaded notices/announcements as documents)
+- **Teacher Dashboard**: Working sections for Attendance (mark student attendance by entering present/absent), Notes (post study notes as notices targeting students), Assignments (post assignment notices), Exams (post exam schedule notices)
+- **Principal Dashboard**: Add action to post college-wide notices from their dashboard
+- **Admin Students**: Replace hardcoded department/course dropdowns with dynamic fetch from college's actual departments/courses
+- **Confirmation dialogs**: Replace all window.confirm() with proper shadcn AlertDialog
+- **Empty states**: Every section that can be empty shows a helpful empty state with an icon and message
+- **Teacher notice target**: Add a "Target Audience" dropdown (All, Students, Teachers, Fee Managers, Principals)
+- **Notifications panel**: Show recent notices from the college as "notifications" in the bell dropdown
 
 ### Modify
-- Add College form: add optional logo image field (FileReader → base64), call uploadCollegeLogo after createCollege if logo provided.
-- Add Admin form: add optional photo image field, call uploadUserPhoto after createUser if photo provided.
-- AdminStudents.tsx AddStudentTab: add optional photo field, call uploadUserPhoto after createUser+addStudentRecord if photo provided.
-- AdminDashboard AddUserDialog (Teacher/FeeManager/Principal): add optional photo field, call uploadUserPhoto after createUser if photo provided.
-- Sidebar bottom user section: render photo avatar (w-8 h-8 rounded-full object-cover) if user.photoUrl is truthy, else keep initials fallback.
-- All Students table: add Photo column showing avatar (w-9 h-9 rounded-full) with photo or initials, plus an Upload Photo button per row.
+- **Sidebar nav items**: Every item must render a proper section UI — no silent fallthrough
+- **Student Attendance**: Show a simple table/list with date, subject, status (present/absent) — seeded from notices or shown as a placeholder with a clear "No records yet" message
+- **Student Assignments**: Show a card list of assignments (from notices with type="assignment"), or a clear empty state
+- **Student Exams**: Show a schedule list (from notices with keyword "exam"), or clear empty state
+- **Student Documents**: Show list of all notices/announcements as downloadable text documents
+- **Teacher sections**: Each stub section renders a proper form or list
+- **All forms**: Simplify field labels, add placeholder hints, group related fields, use clear section headings
+- **All tables**: Add search/filter where missing, show empty states, limit columns to most important
+- **Footer**: Ensure ALL pages show "© 2026. Made by Vikas Sirvi | Powered by Motoko on the Internet Computer"
+- **Login page**: Add "Decentralized ERP" badge below the login button
 
 ### Remove
-- Nothing removed.
+- window.confirm() calls — replaced with AlertDialog components
+- Silent fallthrough sections (sections that render nothing)
 
 ## Implementation Plan
 
-1. **Sidebar avatar**: Update `Sidebar.tsx` bottom user section to render `<img>` if `user.photoUrl` exists, else initials.
-2. **Add College form (SuperAdmin)**: Add an optional image file input to AddCollegeDialog. After `createCollege` succeeds, if a file was selected, call `uploadCollegeLogo`.
-3. **Add Admin form (SuperAdmin)**: Add an optional image file input to AddAdminDialog. After `createUser` succeeds, if a file was selected, call `uploadUserPhoto`.
-4. **Add User form (Admin — Teacher/FeeManager/Principal)**: Add an optional image file input to AddUserDialog. After `createUser` succeeds, if a file was selected, call `uploadUserPhoto`.
-5. **Add Student form (Admin)**: Add an optional image file input to AddStudentTab. After createUser+addStudentRecord, if a file was selected, call `uploadUserPhoto`.
-6. **Students table**: Add Photo column to AllStudentsTab showing avatar + UploadUserPhotoDialog button per row (same pattern as teacher/staff tabs).
-7. All inline photo fields share the same UI pattern: a small clickable area showing preview or a camera icon placeholder, with `accept="image/*"` file input.
+1. **StudentDashboard.tsx** — implement all 5 sections: dashboard (overview), attendance (view table from notices filtered by title containing "Attendance"), assignments (notices filtered by targetRole=student and title containing "Assignment"), exams (notices filtered by title containing "Exam"), documents (all notices shown as document cards with download-as-text option), fees (already works)
+
+2. **TeacherDashboard.tsx** — implement all 5 sections: dashboard (overview), attendance (post attendance notice form — select date, subject, enter roll numbers present), notes (post notice with targetRole=student), assignments (post assignment notice — title, description, due date), exams (post exam schedule notice — subject, date, time, venue), notices (view all notices already works)
+
+3. **PrincipalDashboard.tsx** — add a "Post Notice" action button on the notices section so principal can also create college-wide notices
+
+4. **AdminStudents.tsx** — replace hardcoded DEPARTMENTS/COURSES arrays with `listDepartments(token, collegeId)` and `listCourses(token, collegeId)` fetched on mount; populate the Add Student form dropdowns dynamically
+
+5. **Navbar.tsx** — notifications bell now fetches `listNotices(token, collegeId)` and shows the 5 most recent as notification items with title + time
+
+6. **All dashboards** — replace every `window.confirm()` with an inline AlertDialog
+
+7. **Login.tsx** — add "Decentralized ERP" badge
+
+8. **DashboardLayout.tsx** / footer — ensure full footer copy everywhere
+
+9. **Visual polish** — consistent card styles, loading spinners on every async action, success/error toast messages using sonner, clear empty state illustrations with icons, better button hierarchy (primary/secondary/danger)

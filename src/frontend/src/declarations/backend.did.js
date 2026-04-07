@@ -58,6 +58,7 @@ export const College = IDL.Record({
   'name' : IDL.Text,
   'createdAt' : IDL.Int,
   'address' : IDL.Text,
+  'logoUrl' : IDL.Text,
 });
 export const Notice = IDL.Record({
   'id' : IDL.Text,
@@ -88,6 +89,7 @@ export const User = IDL.Record({
   'collegeId' : IDL.Text,
   'passwordHash' : IDL.Text,
   'phone' : IDL.Text,
+  'photoUrl' : IDL.Text,
 });
 export const UserProfile = IDL.Record({
   'userId' : IDL.Text,
@@ -102,6 +104,22 @@ export const Session = IDL.Record({
   'userId' : IDL.Text,
   'role' : UserRole,
   'collegeId' : IDL.Text,
+});
+export const Department = IDL.Record({
+  'id' : IDL.Text,
+  'collegeId' : IDL.Text,
+  'name' : IDL.Text,
+  'code' : IDL.Text,
+  'createdAt' : IDL.Int,
+});
+export const Course = IDL.Record({
+  'id' : IDL.Text,
+  'collegeId' : IDL.Text,
+  'departmentId' : IDL.Text,
+  'name' : IDL.Text,
+  'code' : IDL.Text,
+  'duration' : IDL.Text,
+  'createdAt' : IDL.Int,
 });
 
 export const idlService = IDL.Service({
@@ -146,6 +164,16 @@ export const idlService = IDL.Service({
       [College],
       [],
     ),
+  'createCourse' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [Course],
+      [],
+    ),
+  'createDepartment' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [Department],
+      [],
+    ),
   'createNotice' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
       [Notice],
@@ -166,6 +194,8 @@ export const idlService = IDL.Service({
       [],
     ),
   'deleteCollege' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'deleteCourse' : IDL.Func([IDL.Text, IDL.Text], [], []),
+  'deleteDepartment' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'deleteUser' : IDL.Func([IDL.Text, IDL.Text], [], []),
   'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
   'getCallerUserRole' : IDL.Func([], [UserRole__1], ['query']),
@@ -184,6 +214,8 @@ export const idlService = IDL.Service({
     ),
   'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
   'listColleges' : IDL.Func([IDL.Text], [IDL.Vec(College)], ['query']),
+  'listCourses' : IDL.Func([IDL.Text, IDL.Text], [IDL.Vec(Course)], ['query']),
+  'listDepartments' : IDL.Func([IDL.Text, IDL.Text], [IDL.Vec(Department)], ['query']),
   'listFeeRecords' : IDL.Func(
       [IDL.Text, IDL.Text],
       [IDL.Vec(FeeRecord)],
@@ -214,6 +246,7 @@ export const idlService = IDL.Service({
           'name' : IDL.Text,
           'role' : UserRole,
           'collegeId' : IDL.Text,
+          'photoUrl' : IDL.Text,
         }),
       ],
       [],
@@ -226,6 +259,16 @@ export const idlService = IDL.Service({
       [College],
       [],
     ),
+  'updateCourse' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [Course],
+      [],
+    ),
+  'updateDepartment' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+      [Department],
+      [],
+    ),
   'updateFeeRecord' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
       [FeeRecord],
@@ -233,6 +276,16 @@ export const idlService = IDL.Service({
     ),
   'updateUser' : IDL.Func(
       [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Bool],
+      [User],
+      [],
+    ),
+  'uploadCollegeLogo' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text],
+      [College],
+      [],
+    ),
+  'uploadUserPhoto' : IDL.Func(
+      [IDL.Text, IDL.Text, IDL.Text],
       [User],
       [],
     ),
@@ -291,6 +344,7 @@ export const idlFactory = ({ IDL }) => {
     'name' : IDL.Text,
     'createdAt' : IDL.Int,
     'address' : IDL.Text,
+    'logoUrl' : IDL.Text,
   });
   const Notice = IDL.Record({
     'id' : IDL.Text,
@@ -321,6 +375,7 @@ export const idlFactory = ({ IDL }) => {
     'collegeId' : IDL.Text,
     'passwordHash' : IDL.Text,
     'phone' : IDL.Text,
+    'photoUrl' : IDL.Text,
   });
   const UserProfile = IDL.Record({
     'userId' : IDL.Text,
@@ -336,7 +391,23 @@ export const idlFactory = ({ IDL }) => {
     'role' : UserRole,
     'collegeId' : IDL.Text,
   });
-  
+  const Department = IDL.Record({
+    'id' : IDL.Text,
+    'collegeId' : IDL.Text,
+    'name' : IDL.Text,
+    'code' : IDL.Text,
+    'createdAt' : IDL.Int,
+  });
+  const Course = IDL.Record({
+    'id' : IDL.Text,
+    'collegeId' : IDL.Text,
+    'departmentId' : IDL.Text,
+    'name' : IDL.Text,
+    'code' : IDL.Text,
+    'duration' : IDL.Text,
+    'createdAt' : IDL.Int,
+  });
+
   return IDL.Service({
     '_initializeAccessControlWithSecret' : IDL.Func([IDL.Text], [], []),
     'addFeeRecord' : IDL.Func(
@@ -379,6 +450,16 @@ export const idlFactory = ({ IDL }) => {
         [College],
         [],
       ),
+    'createCourse' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [Course],
+        [],
+      ),
+    'createDepartment' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [Department],
+        [],
+      ),
     'createNotice' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
         [Notice],
@@ -399,7 +480,9 @@ export const idlFactory = ({ IDL }) => {
         [],
       ),
     'deleteCollege' : IDL.Func([IDL.Text, IDL.Text], [], []),
-  'deleteUser' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'deleteCourse' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'deleteDepartment' : IDL.Func([IDL.Text, IDL.Text], [], []),
+    'deleteUser' : IDL.Func([IDL.Text, IDL.Text], [], []),
     'getCallerUserProfile' : IDL.Func([], [IDL.Opt(UserProfile)], ['query']),
     'getCallerUserRole' : IDL.Func([], [UserRole__1], ['query']),
     'getCollege' : IDL.Func([IDL.Text, IDL.Text], [College], ['query']),
@@ -417,6 +500,8 @@ export const idlFactory = ({ IDL }) => {
       ),
     'isCallerAdmin' : IDL.Func([], [IDL.Bool], ['query']),
     'listColleges' : IDL.Func([IDL.Text], [IDL.Vec(College)], ['query']),
+    'listCourses' : IDL.Func([IDL.Text, IDL.Text], [IDL.Vec(Course)], ['query']),
+    'listDepartments' : IDL.Func([IDL.Text, IDL.Text], [IDL.Vec(Department)], ['query']),
     'listFeeRecords' : IDL.Func(
         [IDL.Text, IDL.Text],
         [IDL.Vec(FeeRecord)],
@@ -451,6 +536,7 @@ export const idlFactory = ({ IDL }) => {
             'name' : IDL.Text,
             'role' : UserRole,
             'collegeId' : IDL.Text,
+            'photoUrl' : IDL.Text,
           }),
         ],
         [],
@@ -463,6 +549,16 @@ export const idlFactory = ({ IDL }) => {
         [College],
         [],
       ),
+    'updateCourse' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [Course],
+        [],
+      ),
+    'updateDepartment' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text, IDL.Text],
+        [Department],
+        [],
+      ),
     'updateFeeRecord' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Nat, IDL.Text],
         [FeeRecord],
@@ -470,6 +566,16 @@ export const idlFactory = ({ IDL }) => {
       ),
     'updateUser' : IDL.Func(
         [IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Text, IDL.Bool],
+        [User],
+        [],
+      ),
+    'uploadCollegeLogo' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text],
+        [College],
+        [],
+      ),
+    'uploadUserPhoto' : IDL.Func(
+        [IDL.Text, IDL.Text, IDL.Text],
         [User],
         [],
       ),

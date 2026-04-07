@@ -1,6 +1,8 @@
 import { Bell, ChevronDown, LogOut, Moon, Sun } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import type { Notice } from "../../backend";
+import { backendAPI as backend } from "../../backendAPI";
 import { useAuth } from "../../contexts/AuthContext";
 
 interface NavbarProps {
@@ -31,10 +33,35 @@ const roleBadgeColors: Record<string, string> = {
   superAdmin: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
 };
 
+function formatRelativeTime(createdAt: bigint): string {
+  const ms = Number(createdAt) / 1_000_000;
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return `${Math.floor(diff / 86_400_000)}d ago`;
+}
+
 export function Navbar({ isDark, onToggleDark, pageTitle }: NavbarProps) {
   const { user, logout } = useAuth();
   const [profileOpen, setProfileOpen] = useState(false);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [notices, setNotices] = useState<Notice[]>([]);
+
+  const fetchNotices = useCallback(async () => {
+    if (!user || !user.token || !user.collegeId || user.role === "superAdmin")
+      return;
+    try {
+      const data = await backend.listNotices(user.token, user.collegeId);
+      setNotices(data.slice(0, 5));
+    } catch {
+      // silently ignore
+    }
+  }, [user]);
+
+  useEffect(() => {
+    fetchNotices();
+  }, [fetchNotices]);
 
   if (!user) return null;
 
@@ -70,7 +97,7 @@ export function Navbar({ isDark, onToggleDark, pageTitle }: NavbarProps) {
           )}
         </button>
 
-        {/* Notifications bell (UI only) */}
+        {/* Notifications bell */}
         <div className="relative">
           <button
             type="button"
@@ -82,28 +109,57 @@ export function Navbar({ isDark, onToggleDark, pageTitle }: NavbarProps) {
             data-ocid="navbar.notifications.button"
           >
             <Bell className="w-4 h-4 text-muted-foreground" />
+            {notices.length > 0 && (
+              <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-destructive" />
+            )}
           </button>
 
           <AnimatePresence>
             {notifOpen && (
               <motion.div
-                className="absolute right-0 top-full mt-2 w-72 bg-card rounded-xl shadow-card-md border border-border overflow-hidden"
+                className="absolute right-0 top-full mt-2 w-80 bg-card rounded-xl shadow-card-md border border-border overflow-hidden"
                 initial={{ opacity: 0, y: -8, scale: 0.96 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: -8, scale: 0.96 }}
                 transition={{ duration: 0.15 }}
                 data-ocid="navbar.notifications.popover"
               >
-                <div className="px-4 py-3 border-b border-border">
+                <div className="px-4 py-3 border-b border-border flex items-center justify-between">
                   <p className="font-semibold text-sm text-foreground">
                     Notifications
                   </p>
+                  {notices.length > 0 && (
+                    <span className="text-xs text-muted-foreground">
+                      {notices.length} recent
+                    </span>
+                  )}
                 </div>
-                <div className="px-4 py-8 text-center">
-                  <p className="text-sm text-muted-foreground">
-                    No new notifications
-                  </p>
-                </div>
+                {notices.length === 0 ? (
+                  <div className="px-4 py-8 text-center">
+                    <Bell className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-sm text-muted-foreground">
+                      No new notifications
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-border">
+                    {notices.map((n) => (
+                      <div
+                        key={n.id}
+                        className="px-4 py-3 hover:bg-muted/40 transition-colors"
+                      >
+                        <p className="text-sm font-medium text-foreground truncate">
+                          {n.title.length > 40
+                            ? `${n.title.slice(0, 40)}…`
+                            : n.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {formatRelativeTime(n.createdAt)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </motion.div>
             )}
           </AnimatePresence>

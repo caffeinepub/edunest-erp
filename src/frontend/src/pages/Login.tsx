@@ -1,4 +1,11 @@
-import { AlertCircle, Eye, EyeOff, GraduationCap, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  Eye,
+  EyeOff,
+  GraduationCap,
+  Link,
+  Loader2,
+} from "lucide-react";
 import { motion } from "motion/react";
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
@@ -142,7 +149,7 @@ export function Login() {
                 placeholder="Enter your username or email"
                 autoComplete="username"
                 className="w-full px-3.5 py-2.5 bg-background border border-border rounded-xl text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 transition-all"
-                data-ocid="login.username.input"
+                data-ocid="login.input"
               />
             </div>
 
@@ -209,11 +216,20 @@ export function Login() {
                 "Sign In"
               )}
             </button>
+
+            {/* Decentralized ERP Badge */}
+            <div className="flex justify-center">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-muted text-muted-foreground text-xs font-medium border border-border">
+                <Link className="w-3 h-3" />
+                Decentralized ERP
+              </span>
+            </div>
           </div>
         </motion.div>
 
         <footer className="mt-auto pt-8 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()}. Made by Vikas Sirvi
+          {new Date().getFullYear()} © Made by Vikas Sirvi | Powered by Motoko
+          on the Internet Computer
         </footer>
       </div>
     </div>

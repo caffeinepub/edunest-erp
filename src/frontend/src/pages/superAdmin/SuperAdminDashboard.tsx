@@ -1,3 +1,14 @@
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -1036,13 +1047,6 @@ export function SuperAdminDashboard({ section }: { section: string }) {
   };
 
   const deleteCollege = async (college: CollegeWithLogo) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete "${college.name}"? This action cannot be undone.`,
-      )
-    ) {
-      return;
-    }
     try {
       await backend.deleteCollege(token, college.id);
       setColleges((prev) => prev.filter((c) => c.id !== college.id));
@@ -1076,13 +1080,6 @@ export function SuperAdminDashboard({ section }: { section: string }) {
   };
 
   const deleteAdmin = async (admin: UserWithPhoto) => {
-    if (
-      !window.confirm(
-        `Are you sure you want to delete admin "${admin.name}"? This action cannot be undone.`,
-      )
-    ) {
-      return;
-    }
     try {
       await backend.deleteUser(token, admin.id);
       setAdmins((prev) => prev.filter((a) => a.id !== admin.id));
@@ -1208,14 +1205,41 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                           >
                             {c.status === "active" ? "Suspend" : "Activate"}
                           </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => deleteCollege(c)}
-                            data-ocid={`super.colleges.delete_button.${i + 1}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                data-ocid={`super.colleges.delete_button.${i + 1}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Are you sure?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone.{" "}
+                                  <strong>{c.name}</strong> will be permanently
+                                  deleted along with all its data.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel data-ocid="super.colleges.delete.cancel_button">
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteCollege(c)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  data-ocid="super.colleges.delete.confirm_button"
+                                >
+                                  Delete College
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -1353,14 +1377,41 @@ export function SuperAdminDashboard({ section }: { section: string }) {
                           >
                             {a.isActive ? "Deactivate" : "Activate"}
                           </Button>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => deleteAdmin(a)}
-                            data-ocid={`super.admins.delete_button.${i + 1}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                data-ocid={`super.admins.delete_button.${i + 1}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>
+                                  Are you sure?
+                                </AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  This action cannot be undone. Admin{" "}
+                                  <strong>{a.name}</strong> will be permanently
+                                  deleted.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel data-ocid="super.admins.delete.cancel_button">
+                                  Cancel
+                                </AlertDialogCancel>
+                                <AlertDialogAction
+                                  onClick={() => deleteAdmin(a)}
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  data-ocid="super.admins.delete.confirm_button"
+                                >
+                                  Delete Admin
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
                         </div>
                       </TableCell>
                     </TableRow>

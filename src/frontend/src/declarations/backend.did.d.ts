@@ -17,6 +17,23 @@ export interface College {
   'name' : string,
   'createdAt' : bigint,
   'address' : string,
+  'logoUrl' : string,
+}
+export interface Course {
+  'id' : string,
+  'collegeId' : string,
+  'departmentId' : string,
+  'name' : string,
+  'code' : string,
+  'duration' : string,
+  'createdAt' : bigint,
+}
+export interface Department {
+  'id' : string,
+  'collegeId' : string,
+  'name' : string,
+  'code' : string,
+  'createdAt' : bigint,
 }
 export interface FeeRecord {
   'id' : string,
@@ -84,6 +101,7 @@ export interface User {
   'collegeId' : string,
   'passwordHash' : string,
   'phone' : string,
+  'photoUrl' : string,
 }
 export interface UserProfile {
   'userId' : string,
@@ -136,6 +154,8 @@ export interface _SERVICE {
   >,
   'assignCallerUserRole' : ActorMethod<[Principal, UserRole__1], undefined>,
   'createCollege' : ActorMethod<[string, string, string, string], College>,
+  'createCourse' : ActorMethod<[string, string, string, string, string, string], Course>,
+  'createDepartment' : ActorMethod<[string, string, string, string], Department>,
   'createNotice' : ActorMethod<
     [string, string, string, string, string],
     Notice
@@ -145,6 +165,8 @@ export interface _SERVICE {
     User
   >,
   'deleteCollege' : ActorMethod<[string, string], undefined>,
+  'deleteCourse' : ActorMethod<[string, string], undefined>,
+  'deleteDepartment' : ActorMethod<[string, string], undefined>,
   'deleteUser' : ActorMethod<[string, string], undefined>,
   'getCallerUserProfile' : ActorMethod<[], [] | [UserProfile]>,
   'getCallerUserRole' : ActorMethod<[], UserRole__1>,
@@ -155,6 +177,8 @@ export interface _SERVICE {
   'getUserProfile' : ActorMethod<[Principal], [] | [UserProfile]>,
   'isCallerAdmin' : ActorMethod<[], boolean>,
   'listColleges' : ActorMethod<[string], Array<College>>,
+  'listCourses' : ActorMethod<[string, string], Array<Course>>,
+  'listDepartments' : ActorMethod<[string, string], Array<Department>>,
   'listFeeRecords' : ActorMethod<[string, string], Array<FeeRecord>>,
   'listNotices' : ActorMethod<[string, string], Array<Notice>>,
   'listStudentRecords' : ActorMethod<[string, string], Array<StudentRecord>>,
@@ -168,6 +192,7 @@ export interface _SERVICE {
       'name' : string,
       'role' : UserRole,
       'collegeId' : string,
+      'photoUrl' : string,
     }
   >,
   'logout' : ActorMethod<[string], undefined>,
@@ -177,11 +202,15 @@ export interface _SERVICE {
     [string, string, string, string, string],
     College
   >,
+  'updateCourse' : ActorMethod<[string, string, string, string, string], Course>,
+  'updateDepartment' : ActorMethod<[string, string, string, string], Department>,
   'updateFeeRecord' : ActorMethod<[string, string, bigint, string], FeeRecord>,
   'updateUser' : ActorMethod<
     [string, string, string, string, string, boolean],
     User
   >,
+  'uploadCollegeLogo' : ActorMethod<[string, string, string], College>,
+  'uploadUserPhoto' : ActorMethod<[string, string, string], User>,
 }
 export declare const idlService: IDL.ServiceClass;
 export declare const idlInitArgs: IDL.Type[];
